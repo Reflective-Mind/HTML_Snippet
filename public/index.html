@@ -6,88 +6,67 @@
     <title>HTML Snippet Website Builder</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="/styles.css" rel="stylesheet">
-    <link href="/styles/navigation.css" rel="stylesheet">
+    <style>
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        .card {
+            margin-bottom: 1.5rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+    </style>
 </head>
 <body>
-    <div id="app">
-        <div id="login-form">
-            <div class="container mt-5">
-                <div class="row justify-content-center">
-                    <div class="col-md-6">
-                        <div class="card">
-                            <div class="card-body">
-                                <h2 class="text-center mb-4">Login</h2>
-                                <form id="loginForm">
-                                    <div class="mb-3">
-                                        <input type="email" class="form-control" id="email" placeholder="Email" required>
-                                    </div>
-                                    <div class="mb-3">
-                                        <input type="password" class="form-control" id="password" placeholder="Password" required>
-                                    </div>
-                                    <button type="submit" class="btn btn-primary w-100 mb-3">Login</button>
-                                    <p class="text-center mb-0">New user? <button type="button" class="btn btn-link p-0" onclick="toggleRegister()">Register here</button></p>
-                                </form>
-                                <form id="registerForm" style="display: none;">
-                                    <div class="mb-3">
-                                        <input type="email" class="form-control" id="regEmail" placeholder="Email" required>
-                                    </div>
-                                    <div class="mb-3">
-                                        <input type="text" class="form-control" id="regUsername" 
-                                               placeholder="Username (3-20 characters)" 
-                                               pattern="[a-zA-Z0-9_]{3,20}" 
-                                               title="Username must be 3-20 characters long and contain only letters, numbers, and underscores"
-                                               required>
-                                    </div>
-                                    <div class="mb-3">
-                                        <input type="password" class="form-control" id="regPassword" placeholder="Password" required>
-                                    </div>
-                                    <div class="mb-3">
-                                        <input type="password" class="form-control" id="confirmPassword" placeholder="Confirm Password" required>
-                                    </div>
-                                    <button type="submit" class="btn btn-success w-100 mb-3">Register</button>
-                                    <p class="text-center mb-0">Already have an account? <button type="button" class="btn btn-link p-0" onclick="toggleRegister()">Login here</button></p>
-                                </form>
-                            </div>
-                        </div>
-                    </div>
+    <div class="container">
+        <div class="card">
+            <div class="card-body">
+                <h1 class="text-center mb-4">HTML Snippet Builder</h1>
+                <p class="lead text-center">Welcome to the HTML Snippet Builder application!</p>
+                
+                <div class="d-grid gap-2 col-6 mx-auto my-4">
+                    <a href="/app" class="btn btn-primary btn-lg">Access Application</a>
+                    <a href="/api/health" class="btn btn-secondary">Check API Status</a>
                 </div>
             </div>
         </div>
 
-        <div id="admin-toolbar" class="navbar navbar-dark bg-dark" style="display: none;">
-            <div class="container-fluid">
-                <span class="navbar-brand">HTML Snippet Builder</span>
-                <div>
-                    <button id="addSnippetBtn" class="btn btn-success me-2">Add Snippet</button>
-                    <button id="addNavBtn" class="btn btn-primary me-2">Add Navigation Button</button>
-                    <button id="addPageBtn" class="btn btn-info me-2">Add Page</button>
-                    <div class="dropdown d-inline-block me-2">
-                        <button class="btn btn-secondary dropdown-toggle" type="button" id="pageManagementBtn" data-bs-toggle="dropdown" aria-expanded="false">
-                            Manage Pages
-                        </button>
-                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="pageManagementBtn">
-                            <li><a class="dropdown-item" href="#" id="renamePageBtn">Rename Page</a></li>
-                            <li><a class="dropdown-item" href="#" id="deletePageBtn">Delete Page</a></li>
-                        </ul>
-                    </div>
-                    <button id="previewBtn" class="btn btn-warning me-2">Preview</button>
-                    <button id="logoutBtn" class="btn btn-danger">Logout</button>
-                </div>
+        <div class="card">
+            <div class="card-header bg-light">
+                <h5 class="mb-0">Login Information</h5>
+            </div>
+            <div class="card-body">
+                <p>Use the following credentials to log in:</p>
+                <ul>
+                    <li><strong>Email:</strong> eideken@hotmail.com</li>
+                    <li><strong>Password:</strong> sword91</li>
+                </ul>
             </div>
         </div>
 
-        <div id="admin-panel" style="display: none;">
-            <div id="pages-nav" class="bg-light p-2"></div>
-            <div id="content" class="content-area"></div>
-        </div>
-
-        <div id="public-view" style="display: none;">
-            <div id="public-content" class="content-area"></div>
+        <div class="card">
+            <div class="card-header bg-light">
+                <h5 class="mb-0">Features</h5>
+            </div>
+            <div class="card-body">
+                <ul>
+                    <li>Create and manage HTML snippets with drag-and-drop functionality</li>
+                    <li>Build multiple pages with navigation between them</li>
+                    <li>Admin controls for site management</li>
+                    <li>User authentication system</li>
+                    <li>Real-time updates using Socket.io</li>
+                </ul>
+            </div>
         </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="/snippet-container.js"></script>
-    <script src="/app.js"></script>
+    <script>
+        // Check if we're on the landing page
+        if (window.location.pathname === '/' || window.location.pathname === '/index.html') {
+            console.log('On landing page, ready for app navigation');
+        }
+    </script>
 </body>
 </html> 

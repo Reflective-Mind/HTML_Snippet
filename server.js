@@ -129,48 +129,15 @@ const authenticateAdmin = (req, res, next) => {
     }
 };
 
-// Serve static files
-app.get('/', async (req, res) => {
-    try {
-        // Check for admin access
-        if (req.query.admin === 'true') {
-            res.sendFile('index.html', { root: './public' });
-            return;
-        }
+// Add a simple home route that works even without MongoDB
+app.get('/home', (req, res) => {
+    res.sendFile('index.html', { root: './public' });
+});
 
-        // For regular users, ensure home page exists and is set as default
-        let defaultPage = await Page.findOne({ isDefault: true });
-        if (!defaultPage) {
-            // Try to find home page
-            defaultPage = await Page.findOne({ id: 'home' });
-            
-            if (!defaultPage) {
-                // Create home page if it doesn't exist
-                defaultPage = await new Page({
-                    id: 'home',
-                    name: 'Home',
-                    snippets: [{
-                        id: 1,
-                        html: '<div class="welcome-message" style="text-align: center; padding: 20px;"><h1>Welcome to Your Page</h1><p>This is your default home page. Log in as admin to customize it.</p></div>',
-                        position: { x: 100, y: 100 },
-                        size: { width: 400, height: 200 }
-                    }],
-                    isDefault: true
-                }).save();
-                console.log('Created new home page as default');
-            } else {
-                // Set existing home page as default
-                defaultPage.isDefault = true;
-                await defaultPage.save();
-                console.log('Set existing home page as default');
-            }
-        }
-
-        res.sendFile('index.html', { root: './public' });
-    } catch (error) {
-        console.error('Error serving page:', error);
-        res.status(500).json({ message: 'Internal server error' });
-    }
+// Add a root redirect
+app.get('/', (req, res) => {
+    console.log('Root path accessed, serving public/index.html');
+    res.sendFile('index.html', { root: './public' });
 });
 
 // MongoDB connection with better error handling and monitoring
