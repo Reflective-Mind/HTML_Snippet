@@ -8,6 +8,7 @@ const bcrypt = require('bcryptjs');
 const axios = require('axios');
 const { Server } = require('socket.io');
 const http = require('http');
+const path = require('path');
 
 dotenv.config();
 
@@ -134,10 +135,90 @@ app.get('/home', (req, res) => {
     res.sendFile('index.html', { root: './public' });
 });
 
-// Add a root redirect
+// Add a root handler with explicit response
 app.get('/', (req, res) => {
-    console.log('Root path accessed, serving public/index.html');
-    res.sendFile('index.html', { root: './public' });
+    console.log('Root path accessed, attempting to serve public/index.html');
+    
+    // Try to send the file
+    try {
+        res.sendFile('index.html', { root: path.join(__dirname, 'public') });
+        console.log('Successfully served public/index.html');
+    } catch (error) {
+        console.error('Error serving index.html:', error);
+        
+        // Fallback response if file can't be served
+        res.send(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>HTML Snippet Builder</title>
+                <style>
+                    body { font-family: Arial, sans-serif; margin: 40px; line-height: 1.6; }
+                    h1 { color: #333; }
+                    .container { max-width: 800px; margin: 0 auto; }
+                    .btn { display: inline-block; background: #007bff; color: white; padding: 10px 15px; text-decoration: none; border-radius: 4px; }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <h1>Welcome to HTML Snippet Builder</h1>
+                    <p>This application allows you to create and manage HTML snippets with drag-and-drop functionality.</p>
+                    <p>Login with:</p>
+                    <ul>
+                        <li><strong>Email:</strong> eideken@hotmail.com</li>
+                        <li><strong>Password:</strong> sword91</li>
+                    </ul>
+                    <a href="/app" class="btn">Access Application</a>
+                </div>
+            </body>
+            </html>
+        `);
+    }
+});
+
+// Add a dedicated app route
+app.get('/app', (req, res) => {
+    console.log('App route accessed, redirecting to login');
+    
+    // Simple HTML for the app page that will load the main app
+    res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>HTML Snippet Builder - App</title>
+            <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+            <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+            <script src="/app.js" defer></script>
+            <link href="/styles.css" rel="stylesheet">
+        </head>
+        <body>
+            <div id="app">
+                <div id="login-form" class="container mt-5">
+                    <div class="row justify-content-center">
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-body">
+                                    <h2 class="text-center mb-4">Login</h2>
+                                    <form id="loginForm">
+                                        <div class="mb-3">
+                                            <input type="email" class="form-control" id="email" placeholder="Email" required>
+                                        </div>
+                                        <div class="mb-3">
+                                            <input type="password" class="form-control" id="password" placeholder="Password" required>
+                                        </div>
+                                        <div class="d-grid">
+                                            <button type="submit" class="btn btn-primary">Login</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </body>
+        </html>
+    `);
 });
 
 // MongoDB connection with better error handling and monitoring
@@ -2315,3 +2396,15 @@ if (process.env.NODE_ENV !== 'vercel') {
         console.log(`Server running on port ${PORT}`);
     });
 } 
+
+// Add a simple health endpoint
+app.get('/api/health', (req, res) => {
+    const health = {
+        status: 'ok',
+        uptime: process.uptime(),
+        timestamp: new Date().toISOString(),
+        mongo: mongoose.connection.readyState
+    };
+    
+    res.json(health);
+}); 
