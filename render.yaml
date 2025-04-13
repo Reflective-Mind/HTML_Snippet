@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: html-snippet-builder-backend
+    env: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: MONGODB_URI
+        value: mongodb+srv://keneide91:3N6L1x0jeIhVX5wP@mbti-insights.s3vrf.mongodb.net/html-snippet-builder?retryWrites=true&w=majority&appName=mbti-insights
+      - key: JWT_SECRET
+        value: cd06a943f7e3a56b2f7c8836736c0d6f2e3b58f9c742a563
+      - key: MISTRAL_API_KEY
+        value: pjTVzQVIZyYNzWj7mjm5aysVYippTADy
+      - key: NODE_ENV
+        value: production
+    healthCheckPath: /api/health
+    autoDeploy: true 

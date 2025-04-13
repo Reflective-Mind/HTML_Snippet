@@ -1,0 +1,2390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MBTI Chat Room</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Rajdhani:wght@500;600&display=swap" rel="stylesheet">
+    <link href="/styles/navigation.css" rel="stylesheet">
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@emoji-mart/data@latest/sets/14/native.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/emoji-mart@latest/dist/browser.js"></script>
+    <script>
+        // Initialize EmojiMart as soon as possible
+        window.emojiMartData = null;
+        window.emojiPicker = null;
+        
+        // Load emoji data
+        async function initializeEmojiMart() {
+            try {
+                // Wait for the scripts to load
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                // Check if EmojiMart is loaded
+                if (typeof window.EmojiMart === 'undefined') {
+                    console.warn('EmojiMart not loaded, retrying...');
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                }
+                
+                // Initialize picker
+                window.Picker = window.EmojiMart?.Picker;
+                if (!window.Picker) {
+                    throw new Error('Failed to initialize Picker');
+                }
+                
+                // Set emoji data
+                window.emojiMartData = window.EmojiMart.data;
+                
+                // Create a test picker to ensure it works
+                const testPicker = new window.Picker({
+                    data: window.emojiMartData,
+                    onEmojiSelect: () => {},
+                    theme: 'dark'
+                });
+                
+                if (!testPicker) {
+                    throw new Error('Failed to create test picker');
+                }
+                
+                console.log('✅ Emoji picker initialized successfully');
+            } catch (error) {
+                console.error('❌ Failed to initialize emoji picker:', error);
+                // Retry initialization after a delay
+                setTimeout(initializeEmojiMart, 2000);
+            }
+        }
+
+        // Initialize emoji picker when the page loads
+        document.addEventListener('DOMContentLoaded', initializeEmojiMart);
+
+        // Helper function to create a picker
+        function createPicker(container, onSelect) {
+            try {
+                if (!window.Picker || !window.emojiMartData) {
+                    console.error('Picker not initialized');
+                    return null;
+                }
+                return new window.Picker({
+                    data: window.emojiMartData,
+                    onEmojiSelect: onSelect,
+                    theme: 'dark',
+                    set: 'native',
+                    showPreview: false,
+                    showSkinTones: false,
+                    maxFrequentRows: 2,
+                    position: 'top-end',
+                    emojiSize: 20
+                });
+            } catch (error) {
+                console.error('Error creating picker:', error);
+                return null;
+            }
+        }
+    </script>
+    <style>
+        :root {
+            --primary-bg: #0a0a0f;
+            --secondary-bg: #13131a;
+            --accent-purple: #6b46c1;
+            --accent-teal: #00b4d8;
+            --text-primary: #ffffff;
+            --text-secondary: #a0aec0;
+            --glow-purple: 0 0 10px rgba(107, 70, 193, 0.5);
+            --glow-teal: 0 0 10px rgba(0, 180, 216, 0.5);
+        }
+
+        /* AI Toggle Switch Styles */
+        .ai-toggle-label {
+            position: relative;
+            display: inline-block;
+            cursor: pointer;
+        }
+
+        .ai-toggle-label input[type="checkbox"] {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .ai-toggle-label .toggle-track {
+            width: 40px;
+            height: 20px;
+            background-color: rgba(107, 70, 193, 0.2);
+            border-radius: 20px;
+            position: relative;
+            transition: all 0.3s ease;
+        }
+
+        .ai-toggle-label .toggle-dot {
+            width: 16px;
+            height: 16px;
+            background-color: var(--accent-purple);
+            border-radius: 50%;
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            transition: all 0.3s ease;
+        }
+
+        .ai-toggle-label input[type="checkbox"]:checked + .toggle-track {
+            background-color: rgba(0, 180, 216, 0.3);
+        }
+
+        .ai-toggle-label input[type="checkbox"]:checked + .toggle-track .toggle-dot {
+            transform: translateX(20px);
+            background-color: var(--accent-teal);
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--primary-bg);
+            color: var(--text-primary);
+        }
+
+        .chat-container {
+            height: 100vh;
+            background-color: var(--secondary-bg);
+            display: flex;
+        }
+
+        .message-container {
+            height: calc(100vh - 80px);
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: var(--accent-teal) var(--secondary-bg);
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .message-container::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .message-container::-webkit-scrollbar-track {
+            background: var(--secondary-bg);
+        }
+
+        .message-container::-webkit-scrollbar-thumb {
+            background-color: var(--accent-teal);
+            border-radius: 3px;
+        }
+
+        .channel-list {
+            width: 240px;
+            background: rgba(19, 19, 26, 0.8);
+            backdrop-filter: blur(10px);
+            padding: 1rem;
+            border-right: 1px solid var(--accent-purple);
+        }
+
+        .message {
+            max-width: 80%;
+            margin-bottom: 1rem;
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(107, 70, 193, 0.1);
+            transition: all 0.3s ease;
+            align-self: flex-start;
+        }
+
+        .message:hover {
+            background: rgba(255, 255, 255, 0.05);
+            box-shadow: var(--glow-purple);
+        }
+
+        .message.ai-message {
+            border-color: rgba(0, 180, 216, 0.2);
+            background: rgba(0, 180, 216, 0.05);
+        }
+
+        .message.user-message {
+            border-color: rgba(107, 70, 193, 0.2);
+        }
+
+        .channel-button {
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 0.5rem;
+            background: rgba(107, 70, 193, 0.1);
+            border: 1px solid rgba(107, 70, 193, 0.2);
+        }
+
+        .channel-button:hover, .channel-button.active {
+            background: rgba(107, 70, 193, 0.2);
+            box-shadow: var(--glow-purple);
+        }
+
+        .input-container {
+            padding: 1rem;
+            background: rgba(19, 19, 26, 0.8);
+            border-top: 1px solid var(--accent-purple);
+            position: relative;
+        }
+
+        .message-input {
+            width: 100%;
+            padding: 0.75rem;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--accent-teal);
+            color: var(--text-primary);
+            resize: none;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+
+        .message-input:focus {
+            background: rgba(255, 255, 255, 0.08);
+            box-shadow: var(--glow-teal);
+        }
+
+        .emoji-picker {
+            position: absolute;
+            bottom: 100%;
+            right: 1rem;
+            z-index: 1000;
+            border-radius: 8px;
+            box-shadow: var(--glow-purple);
+            background: var(--secondary-bg);
+            border: 1px solid var(--accent-purple);
+        }
+
+        .reactions {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+        }
+
+        .reaction {
+            padding: 0.25rem 0.5rem;
+            border-radius: 1rem;
+            background: rgba(107, 70, 193, 0.1);
+            border: 1px solid rgba(107, 70, 193, 0.2);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 0.875rem;
+        }
+
+        .reaction:hover {
+            background: rgba(107, 70, 193, 0.2);
+            box-shadow: var(--glow-purple);
+        }
+
+        .online-users {
+            width: 240px;
+            background: rgba(19, 19, 26, 0.8);
+            backdrop-filter: blur(10px);
+            padding: 1rem;
+            border-left: 1px solid var(--accent-purple);
+        }
+
+        .user-status {
+            width: 8px;
+            height: 8px;
+            background: var(--accent-teal);
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 0.5rem;
+            box-shadow: var(--glow-teal);
+        }
+
+        /* Add styles for the registration form */
+        .form-container {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: var(--secondary-bg);
+            padding: 2rem;
+            border-radius: 8px;
+            border: 1px solid var(--accent-purple);
+            box-shadow: var(--glow-purple);
+            z-index: 1000;
+            width: 90%;
+            max-width: 400px;
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: var(--text-primary);
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 0.5rem;
+            border-radius: 4px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--accent-teal);
+            color: var(--text-primary);
+        }
+
+        .form-group input:focus {
+            outline: none;
+            box-shadow: var(--glow-teal);
+        }
+
+        .message {
+            padding: 10px;
+            margin: 5px 0;
+            border-bottom: 1px solid #eee;
+        }
+
+        .message-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 5px;
+        }
+
+        .message-controls {
+            margin-left: auto;
+            display: none;
+        }
+
+        .message:hover .message-controls {
+            display: flex;
+            gap: 5px;
+        }
+
+        .message-content {
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .admin-section {
+            padding: 20px;
+        }
+
+        .list-group-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .btn-sm {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.875rem;
+        }
+
+        /* Update the channel manager modal styling */
+        .modal-content {
+            background: var(--secondary-bg);
+            border: 1px solid var(--accent-purple);
+            border-radius: 12px;
+            color: var(--text-primary);
+        }
+
+        .modal-header {
+            border-bottom: 1px solid var(--accent-purple);
+            padding: 1rem;
+        }
+
+        .modal-body {
+            padding: 1rem;
+        }
+
+        .modal-footer {
+            border-top: 1px solid var(--accent-purple);
+            padding: 1rem;
+        }
+
+        .channel-form {
+            background: rgba(107, 70, 193, 0.1);
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+        }
+
+        .channel-form input {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--accent-teal);
+            color: var(--text-primary);
+            padding: 0.5rem;
+            border-radius: 4px;
+            width: 100%;
+            margin-bottom: 0.5rem;
+        }
+
+        .channel-list-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem;
+            background: rgba(107, 70, 193, 0.1);
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+        }
+
+        .channel-controls {
+            display: flex;
+            gap: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <!-- Channels Sidebar -->
+        <div class="channel-list">
+            <h2 class="text-xl font-bold mb-4 font-rajdhani text-accent-purple">Channels</h2>
+            <div class="space-y-2" id="channelList">
+                <div id="generalChannel" class="channel-button" onclick="switchChannel('general')">
+                    <span class="text-accent-teal mr-2">#</span>general
+                    <span class="text-xs text-text-secondary block ml-6">Human chat only</span>
+                </div>
+                <div id="aiChannel" class="channel-button" onclick="switchChannel('ai-assistant')">
+                    <span class="text-accent-teal mr-2">#</span>ai-assistant
+                    <span class="text-xs text-text-secondary block ml-6">Cognitive Coach</span>
+                </div>
+            </div>
+            
+            <!-- Admin Controls -->
+            <div id="adminControls" style="display: none;" class="mt-4 border-t border-accent-purple pt-4">
+                <h3 class="text-lg font-bold mb-2 text-accent-purple">Admin Controls</h3>
+                <button onclick="showChannelManager()" class="w-full btn btn-outline-primary mb-2">
+                    Manage Channels
+                </button>
+                <button onclick="showUserManager()" class="w-full btn btn-outline-primary">
+                    Manage Users
+                </button>
+            </div>
+        </div>
+
+        <!-- Main Chat Area -->
+        <div class="flex-1 flex flex-col">
+            <div class="bg-opacity-90 p-4 border-b border-accent-purple">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h2 class="text-xl font-bold font-rajdhani" id="currentChannel"># general</h2>
+                        <div id="typingIndicator" class="typing-indicator">
+                            <span class="typing-dots"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="message-container" id="messages">
+                <!-- Messages will be inserted here -->
+            </div>
+
+            <div class="input-container">
+                <div class="flex items-center gap-2">
+                    <textarea
+                        id="messageInput"
+                        class="message-input"
+                        placeholder="Select a channel to start chatting..."
+                        rows="1"
+                        onkeyup="handleTyping()"
+                        onkeydown="handleMessageKeyPress(event)"
+                        disabled
+                    ></textarea>
+                    <button
+                        onclick="toggleEmojiPicker()"
+                        class="text-accent-teal hover:text-accent-purple transition-colors p-2 opacity-50"
+                        disabled
+                    >
+                        😊
+                    </button>
+                    <button
+                        onclick="sendMessage()"
+                        class="bg-accent-teal hover:bg-opacity-80 text-white px-6 py-2 rounded-lg transition-all opacity-50"
+                        disabled
+                    >
+                        Send
+                    </button>
+                </div>
+                <div id="emojiPicker" class="emoji-picker hidden"></div>
+            </div>
+        </div>
+
+        <!-- Online Users Sidebar -->
+        <div class="online-users">
+            <h2 class="text-xl font-bold mb-4 font-rajdhani text-accent-purple">Online Users</h2>
+            <div id="onlineUsers" class="space-y-2">
+                <!-- Online users will be listed here -->
+            </div>
+        </div>
+    </div>
+
+    <div id="loginForm" class="form-container" style="display: none;">
+        <h2 class="text-xl font-bold mb-4">Login</h2>
+        <form onsubmit="login(event)">
+            <div class="form-group">
+                <label for="loginInput">Email or Username:</label>
+                <input type="text" id="loginInput" required class="form-control" 
+                       placeholder="Enter email or username">
+            </div>
+            <div class="form-group">
+                <label for="loginPassword">Password:</label>
+                <input type="password" id="loginPassword" required class="form-control"
+                       placeholder="Enter password">
+            </div>
+            <div class="flex justify-between mt-4">
+                <button type="submit" class="bg-accent-teal hover:bg-opacity-80 text-white px-6 py-2 rounded-lg transition-all">
+                    Login
+                </button>
+                <button type="button" onclick="toggleRegister()" class="text-accent-teal hover:text-accent-purple transition-colors">
+                    Register
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <div id="registerForm" class="form-container" style="display: none;">
+        <h2 class="text-xl font-bold mb-4">Register</h2>
+        <form onsubmit="register(event)">
+            <div class="form-group">
+                <label for="regEmail">Email:</label>
+                <input type="email" id="regEmail" required class="form-control"
+                       placeholder="Enter your email">
+            </div>
+            <div class="form-group">
+                <label for="regUsername">Username:</label>
+                <input type="text" id="regUsername" required class="form-control" 
+                       pattern="[a-zA-Z0-9_]{3,20}" 
+                       title="Username must be 3-20 characters long and contain only letters, numbers, and underscores"
+                       placeholder="Choose a username (3-20 characters)">
+            </div>
+            <div class="form-group">
+                <label for="regPassword">Password:</label>
+                <input type="password" id="regPassword" required class="form-control"
+                       placeholder="Choose a password">
+            </div>
+            <div class="form-group">
+                <label for="confirmPassword">Confirm Password:</label>
+                <input type="password" id="confirmPassword" required class="form-control"
+                       placeholder="Confirm your password">
+            </div>
+            <div class="flex justify-between mt-4">
+                <button type="submit" class="bg-accent-teal hover:bg-opacity-80 text-white px-6 py-2 rounded-lg transition-all">
+                    Register
+                </button>
+                <button type="button" onclick="toggleRegister()" class="text-accent-teal hover:text-accent-purple transition-colors">
+                    Back to Login
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <script>
+        let currentUser = null;
+        let socket = null;
+        let currentChannel = null;
+        let editingMessageId = null;
+        let replyingTo = null;
+        let typingTimeout = null;
+        let lastTypingSignal = 0;
+        let messageCache = {};
+        let currentPage = 'home';
+
+        // Define AI Settings Modal HTML at the top
+        const aiSettingsModalHTML = `
+            <div class="modal-content w-full max-w-lg mx-4" style="background: var(--secondary-bg); border: 1px solid var(--accent-purple); border-radius: 12px;">
+                <div class="modal-header p-4 border-b border-accent-purple">
+                    <h3 class="text-xl font-bold text-accent-purple">AI Settings</h3>
+                </div>
+                <div class="modal-body p-4">
+                    <form id="aiSettingsForm" class="space-y-4">
+                        <div class="form-group">
+                            <label class="block text-accent-teal mb-2">AI Display Name</label>
+                            <input type="text" id="aiDisplayName" class="w-full bg-opacity-10 bg-white border border-accent-teal rounded p-2 text-white"
+                                   placeholder="Enter display name for the AI">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="block text-accent-teal mb-2">AI Personality</label>
+                            <select id="aiPersonality" class="w-full bg-opacity-10 bg-white border border-accent-teal rounded p-2 text-white">
+                                <option value="None">None - Use Custom Personality Only</option>
+                                <option value="The Infinite Consciousness">The Infinite Consciousness - Universal Awareness</option>
+                                <option value="Alan Watts">Alan Watts - Eastern Philosophy Expert</option>
+                                <option value="Carl Jung">Carl Jung - Analytical Psychology Pioneer</option>
+                                <option value="Socrates">Socrates - Philosophical Questioner</option>
+                                <option value="Marie-Louise von Franz">Marie-Louise von Franz - Jungian Analyst</option>
+                                <option value="Joseph Campbell">Joseph Campbell - Mythology Expert</option>
+                                <option value="Abraham Maslow">Abraham Maslow - Human Potential Expert</option>
+                                <option value="Viktor Frankl">Viktor Frankl - Meaning-Focused Therapist</option>
+                                <option value="Thich Nhat Hanh">Thich Nhat Hanh - Mindfulness Teacher</option>
+                                <option value="Ram Dass">Ram Dass - Spiritual Guide</option>
+                                <option value="Rumi">Rumi - Mystical Poet</option>
+                            </select>
+                            <textarea id="aiPersonalityCustom" class="w-full bg-opacity-10 bg-white border border-accent-teal rounded p-2 text-white mt-2" 
+                                    rows="3" placeholder="Extend or customize the personality further..."></textarea>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="block text-accent-teal mb-2">AI Focus</label>
+                            <select id="aiFocus" class="w-full bg-opacity-10 bg-white border border-accent-teal rounded p-2 text-white">
+                                <option value="MBTI & Personality">MBTI & Personality</option>
+                                <option value="Eastern Philosophy">Eastern Philosophy</option>
+                                <option value="Western Philosophy">Western Philosophy</option>
+                                <option value="Jungian Psychology">Jungian Psychology</option>
+                                <option value="Spiritual Growth">Spiritual Growth</option>
+                                <option value="Mindfulness">Mindfulness</option>
+                                <option value="Life Purpose">Life Purpose</option>
+                                <option value="Personal Development">Personal Development</option>
+                                <option value="Emotional Intelligence">Emotional Intelligence</option>
+                                <option value="Creative Expression">Creative Expression</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="block text-accent-teal mb-2">Communication Style</label>
+                            <select id="aiResponseStyle" class="w-full bg-opacity-10 bg-white border border-accent-teal rounded p-2 text-white">
+                                <option value="Philosophical">Philosophical</option>
+                                <option value="Socratic">Socratic</option>
+                                <option value="Poetic">Poetic</option>
+                                <option value="Academic">Academic</option>
+                                <option value="Storytelling">Storytelling</option>
+                                <option value="Mystical">Mystical</option>
+                                <option value="Practical">Practical</option>
+                                <option value="Humorous">Humorous</option>
+                                <option value="Compassionate">Compassionate</option>
+                                <option value="Analytical">Analytical</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="block text-accent-teal mb-2">Interaction Style</label>
+                            <select id="aiEngagement" class="w-full bg-opacity-10 bg-white border border-accent-teal rounded p-2 text-white">
+                                <option value="Proactive Guide">Proactive Guide</option>
+                                <option value="Responsive Mentor">Responsive Mentor</option>
+                                <option value="Socratic Teacher">Socratic Teacher</option>
+                                <option value="Silent Listener">Silent Listener</option>
+                                <option value="Collaborative Explorer">Collaborative Explorer</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="block text-accent-teal mb-2">
+                                Response Length: <span id="maxLengthValue">500</span> words
+                            </label>
+                            <input type="range" id="maxResponseLength" 
+                                   class="w-full accent-teal" min="50" max="2000" step="50" value="500"
+                                   oninput="document.getElementById('maxLengthValue').textContent = this.value">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer p-4 border-t border-accent-purple flex justify-end gap-2">
+                    <button onclick="this.closest('.modal-content').parentElement.remove()" 
+                            class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-all">
+                        Cancel
+                    </button>
+                    <button onclick="saveAISettings(this.closest('.modal-content').parentElement)"
+                            class="bg-accent-teal hover:bg-opacity-80 text-white px-4 py-2 rounded-lg transition-all">
+                        Save Settings
+                    </button>
+                </div>
+            </div>
+        `;
+
+        // Add welcome page HTML
+        const welcomePageHTML = `
+            <div class="flex flex-col items-center justify-center h-full text-center px-4">
+                <div class="welcome-animation mb-6">
+                    <span class="text-6xl">👋</span>
+                </div>
+                <h1 class="text-4xl font-bold text-accent-purple mb-4">Welcome to MBTI Chat</h1>
+                <p class="text-xl text-text-secondary mb-8">Select a channel from the sidebar to start chatting</p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl">
+                    <div class="p-6 bg-opacity-10 bg-accent-purple rounded-lg border border-accent-purple">
+                        <div class="text-3xl mb-4">💬</div>
+                        <h2 class="text-xl font-bold text-accent-teal mb-2">Chat Channels</h2>
+                        <p class="text-text-secondary">Connect with others in regular chat channels</p>
+                    </div>
+                    <div class="p-6 bg-opacity-10 bg-accent-purple rounded-lg border border-accent-purple">
+                        <div class="text-3xl mb-4">🤖</div>
+                        <h2 class="text-xl font-bold text-accent-teal mb-2">AI Channels</h2>
+                        <p class="text-text-secondary">Engage with AI assistants for deeper insights</p>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // Add styles for dropdowns and other UI elements
+        const styleSheet = document.createElement('style');
+        styleSheet.textContent = `
+            select option {
+                background-color: var(--secondary-bg);
+                color: var(--text-primary);
+            }
+            select:focus option:checked {
+                background: var(--accent-purple);
+                color: white;
+            }
+            .form-group select {
+                background-color: rgba(255, 255, 255, 0.05);
+            }
+            input[type="range"] {
+                height: 2px;
+                background: var(--accent-teal);
+            }
+            input[type="range"]::-webkit-slider-thumb {
+                background: var(--accent-teal);
+                width: 16px;
+                height: 16px;
+                border-radius: 50%;
+                cursor: pointer;
+            }
+            .welcome-animation {
+                animation: wave 1s ease-in-out infinite;
+            }
+            @keyframes wave {
+                0%, 100% { transform: rotate(0deg); }
+                25% { transform: rotate(-20deg); }
+                75% { transform: rotate(20deg); }
+            }
+        `;
+        document.head.appendChild(styleSheet);
+
+        // Update the initialization code
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                const token = localStorage.getItem('token');
+                const email = localStorage.getItem('userEmail');
+                
+                if (token) {
+                    // Hide login form if token exists
+                    document.getElementById('loginForm').style.display = 'none';
+                    document.getElementById('registerForm').style.display = 'none';
+                    
+                    currentUser = {
+                        email: email,
+                        username: localStorage.getItem('username'),
+                        token: token,
+                        role: localStorage.getItem('userRole')
+                    };
+
+                    await initializeChat();
+                    await updateChannelUI(); // This will now show welcome page since currentChannel is null
+                    await updateAdminControls();
+                    await updateChannelList();
+                    
+                    // Load initial navigation
+                    const response = await fetch('/api/pages', {
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                        }
+                    });
+                    
+                    if (response.ok) {
+                        const pages = await response.json();
+                        const navButtons = pages.map(page => ({
+                            text: page.name,
+                            targetPage: page.id
+                        }));
+                        renderNavigationButtons(navButtons);
+                    }
+                } else {
+                    // Show login form if no token
+                    document.getElementById('loginForm').style.display = 'block';
+                }
+            } catch (error) {
+                console.error('Initialization error:', error);
+                showToast('Failed to initialize application', 'error');
+            }
+        });
+
+        function showWelcomePage() {
+            const messagesContainer = document.getElementById('messages');
+            messagesContainer.innerHTML = welcomePageHTML;
+            
+            // Update channel header
+            document.getElementById('currentChannel').textContent = 'Welcome';
+            
+            // Clear active state from all channel buttons
+            document.querySelectorAll('.channel-button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            // Disable input controls
+            const messageInput = document.getElementById('messageInput');
+            const emojiButton = messageInput.nextElementSibling;
+            const sendButton = emojiButton.nextElementSibling;
+            
+            messageInput.disabled = true;
+            messageInput.placeholder = 'Select a channel to start chatting...';
+            emojiButton.disabled = true;
+            emojiButton.classList.add('opacity-50');
+            sendButton.disabled = true;
+            sendButton.classList.add('opacity-50');
+        }
+
+        function switchChannel(channel) {
+            if (!socket?.connected) {
+                showAlert('Not connected to chat server', 'danger');
+                return;
+            }
+
+            // Store the channel name
+            currentChannel = channel;
+            
+            // Clear messages when switching channels
+            const messagesContainer = document.getElementById('messages');
+            messagesContainer.innerHTML = '';
+            
+            // Update channel UI
+            document.getElementById('currentChannel').textContent = channel;
+            document.querySelectorAll('.channel-button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            // Enable input controls
+            const messageInput = document.getElementById('messageInput');
+            const emojiButton = messageInput.nextElementSibling;
+            const sendButton = emojiButton.nextElementSibling;
+            
+            messageInput.disabled = false;
+            messageInput.placeholder = 'Type a message...';
+            emojiButton.disabled = false;
+            emojiButton.classList.remove('opacity-50');
+            sendButton.disabled = false;
+            sendButton.classList.remove('opacity-50');
+            
+            // Use the channel name directly for the button ID
+            const channelButton = document.getElementById(`channel-${channel}`);
+            if (channelButton) {
+                channelButton.classList.add('active');
+            }
+            
+            // Join the channel using the raw channel name
+            socket.emit('joinChannel', channel);
+        }
+
+        function updateChannelUI() {
+            if (!currentChannel) {
+                showWelcomePage();
+                return;
+            }
+
+            document.getElementById('currentChannel').textContent = currentChannel;
+            document.querySelectorAll('.channel-button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            const channelButton = document.getElementById(`channel-${currentChannel}`);
+            if (channelButton) {
+                channelButton.classList.add('active');
+            }
+        }
+
+        function initializeChat() {
+            console.log('Initializing chat with token:', currentUser.token ? 'present' : 'missing');
+            
+            if (socket) {
+                console.log('Disconnecting existing socket');
+                socket.disconnect();
+            }
+            
+            socket = io('http://localhost:10000', {
+                auth: { token: currentUser.token },
+                transports: ['websocket', 'polling'],
+                path: '/socket.io',
+                reconnection: true,
+                reconnectionAttempts: 5,
+                reconnectionDelay: 1000,
+                timeout: 20000,
+                forceNew: true,
+                autoConnect: true,
+                withCredentials: true
+            });
+
+            socket.on('connect', () => {
+                console.log('✅ Connected to chat server');
+                showAlert('Connected to chat server', 'success');
+                switchChannel(currentChannel);
+            });
+
+            socket.on('connect_error', (error) => {
+                console.error('❌ Socket connection error:', error);
+                showAlert('Failed to connect: ' + error.message, 'danger');
+                updateOnlineUsers([]);
+            });
+
+            socket.on('disconnect', (reason) => {
+                console.log('Disconnected:', reason);
+                showAlert('Disconnected: ' + reason, 'warning');
+                updateOnlineUsers([]);
+            });
+
+            socket.on('message', (message) => {
+                console.log('Received message:', message);
+                if (!messageCache[message.channel]) {
+                    messageCache[message.channel] = [];
+                }
+                messageCache[message.channel].push(message);
+                
+                if (message.channel === currentChannel) {
+                    appendMessage(message);
+                }
+            });
+
+            socket.on('messageHistory', (messages) => {
+                console.log('Received message history for ' + currentChannel);
+                messageCache[currentChannel] = messages;
+                const messagesContainer = document.getElementById('messages');
+                messagesContainer.innerHTML = '';
+                messages.forEach(message => appendMessage(message));
+            });
+
+            socket.on('userList', (users) => {
+                console.log('Received user list:', users);
+                updateOnlineUsers(users);
+            });
+
+            socket.on('messageReactionUpdated', (data) => {
+                updateMessageReactions(data.messageId, data.reactions);
+            });
+
+            socket.on('messageUpdated', (message) => {
+                console.log('Received message update:', message);
+                const messageElement = document.getElementById(`message-${message.id}`);
+                if (messageElement) {
+                    const contentElement = messageElement.querySelector('.message-content');
+                    contentElement.textContent = message.content;
+                    
+                    // Add edited indicator
+                    const editedIndicator = messageElement.querySelector('.edited-indicator');
+                    if (editedIndicator) {
+                        editedIndicator.classList.remove('hidden');
+                    }
+                    
+                    // Update message in cache
+                    if (messageCache[message.channel]) {
+                        const cachedMessageIndex = messageCache[message.channel].findIndex(m => m.id === message.id);
+                        if (cachedMessageIndex !== -1) {
+                            messageCache[message.channel][cachedMessageIndex] = {
+                                ...messageCache[message.channel][cachedMessageIndex],
+                                content: message.content,
+                                edited: { isEdited: true, timestamp: new Date() }
+                            };
+                        }
+                    }
+                }
+            });
+
+            socket.on('messageDeleted', (data) => {
+                const messageElement = document.getElementById(`message-${data.messageId}`);
+                if (messageElement) {
+                    messageElement.classList.add('fade-out');
+                    setTimeout(() => messageElement.remove(), 300);
+                }
+            });
+
+            socket.on('userTyping', (data) => {
+                const indicator = document.getElementById('typingIndicator');
+                indicator.textContent = `${data.username} is typing...`;
+                indicator.classList.add('active');
+            });
+
+            socket.on('userStoppedTyping', (data) => {
+                const indicator = document.getElementById('typingIndicator');
+                indicator.classList.remove('active');
+            });
+
+            try {
+                socket.connect();
+            } catch (error) {
+                console.error('Error connecting:', error);
+                showAlert('Connection error', 'danger');
+            }
+
+            // Show/hide admin controls
+            const adminElements = document.querySelectorAll('.admin-only');
+            const isAdmin = currentUser.role === 'admin';
+            adminElements.forEach(el => {
+                el.style.display = isAdmin ? 'block' : 'none';
+            });
+        }
+
+        function appendMessage(message) {
+            const messagesContainer = document.getElementById('messages');
+            const messageElement = document.createElement('div');
+            
+            // Ensure we have a valid message ID
+            const messageId = message._id;
+            if (!messageId) {
+                console.error('Message has no ID:', message);
+                return;
+            }
+            
+            messageElement.id = `message-${messageId}`;
+            messageElement.className = `message ${message.isAIMessage ? 'ai-message' : 'user-message'}`;
+            messageElement.dataset.messageId = messageId;
+            messageElement.dataset.originalContent = message.content;
+            
+            const isOwnMessage = message.username === currentUser.username;
+            const isAdmin = localStorage.getItem('userRole') === 'admin';
+            
+            let replyHtml = '';
+            if (message.replyTo) {
+                replyHtml = `
+                    <div class="reply-preview bg-opacity-10 p-2 rounded mb-2 border-l-2 border-accent-purple">
+                        <div class="font-semibold text-accent-purple">${message.replyTo.username}</div>
+                        <div class="text-text-secondary">${message.replyTo.content}</div>
+                    </div>
+                `;
+            }
+
+            let attachmentHtml = '';
+            if (message.attachment) {
+                if (message.attachment.type.startsWith('image/')) {
+                    attachmentHtml = `
+                        <div class="message-attachment mt-2">
+                            <img src="${message.attachment.url}" alt="attachment" 
+                                 class="max-w-sm rounded-lg cursor-pointer hover:opacity-90 transition-opacity" 
+                                 onclick="openImagePreview('${message.attachment.url}')">
+                        </div>
+                    `;
+                }
+            }
+            
+            let reactionsHtml = '';
+            if (message.reactions) {
+                reactionsHtml = `
+                    <div class="reactions" id="reactions-${messageId}">
+                        ${renderReactions(message.reactions)}
+                    </div>
+                `;
+            }
+            
+            // Update the edit button to use the correct message ID
+            const editButton = `
+                <button onclick="editMessage('${messageId}')" 
+                        class="reaction-button px-2 py-1 rounded text-sm"
+                        data-message-id="${messageId}"
+                        ${isOwnMessage ? '' : 'title="Admin Edit"'}>
+                    ✏️ Edit
+                </button>
+            `;
+            
+            messageElement.innerHTML = `
+                <div class="flex items-start">
+                    <div class="flex-1">
+                        ${replyHtml}
+                        <div class="flex items-center mb-1">
+                            <span class="font-semibold text-accent-purple">${message.username}</span>
+                            <span class="text-text-secondary text-sm ml-2">
+                                ${new Date(message.timestamp).toLocaleTimeString()}
+                                <span class="edited-indicator text-xs ml-1 ${message.edited?.isEdited ? '' : 'hidden'}">(edited)</span>
+                            </span>
+                        </div>
+                        <div class="message-content text-text-primary" data-message-id="${messageId}">${message.content}</div>
+                        ${attachmentHtml}
+                        <div class="message-actions mt-2 flex items-center space-x-3">
+                            <button onclick="showReactionPicker('${messageId}')" class="reaction-button px-2 py-1 rounded text-sm">
+                                😀 React
+                            </button>
+                            ${(isOwnMessage || isAdmin) ? `
+                                ${editButton}
+                                <button onclick="deleteMessage('${messageId}')" class="reaction-button px-2 py-1 rounded text-sm"
+                                        ${isOwnMessage ? '' : 'title="Admin Delete"'}>
+                                    🗑️ Delete
+                                </button>
+                            ` : ''}
+                        </div>
+                        ${reactionsHtml}
+                    </div>
+                </div>
+            `;
+            
+            messagesContainer.appendChild(messageElement);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        function renderReactions(reactions) {
+            if (!reactions) return '';
+            
+            return Object.entries(reactions)
+                .map(([emoji, users]) => {
+                    const count = Array.isArray(users) ? users.length : 0;
+                    return `
+                        <button class="reaction px-2 py-1 rounded text-sm" 
+                                onclick="toggleReaction(this.closest('.message').id.replace('message-', ''), '${emoji}')">
+                            ${emoji} ${count}
+                        </button>
+                    `;
+                })
+                .join('');
+        }
+
+        function updateMessageReactions(messageId, reactions) {
+            const reactionsContainer = document.getElementById(`reactions-${messageId}`);
+            if (reactionsContainer) {
+                reactionsContainer.innerHTML = renderReactions(reactions);
+            }
+        }
+
+        function showReactionPicker(messageId) {
+            if (!window.emojiMartData || !window.emojiPicker) {
+                showAlert('Emoji picker is still loading...', 'warning');
+                return;
+            }
+
+            const existingPicker = document.querySelector('.emoji-picker');
+            if (existingPicker) {
+                existingPicker.remove();
+            }
+
+            const messageElement = document.getElementById(`message-${messageId}`);
+            const picker = document.createElement('div');
+            picker.className = 'emoji-picker';
+            picker.style.position = 'absolute';
+            picker.style.zIndex = '1000';
+            
+            messageElement.appendChild(picker);
+            
+            new window.emojiPicker({
+                data: window.emojiMartData,
+                onEmojiSelect: (emoji) => {
+                    toggleReaction(messageId, emoji.native);
+                    picker.remove();
+                },
+                theme: 'dark',
+                set: 'native',
+                showPreview: false,
+                showSkinTones: false,
+                maxFrequentRows: 2,
+                position: 'top-start'
+            }).render({ container: picker });
+
+            // Position the picker relative to the message
+            const messageRect = messageElement.getBoundingClientRect();
+            picker.style.top = '100%';
+            picker.style.left = '0';
+
+            // Close picker when clicking outside
+            const closeHandler = (e) => {
+                if (!picker.contains(e.target) && !e.target.closest('.reaction-button')) {
+                    picker.remove();
+                    document.removeEventListener('click', closeHandler);
+                }
+            };
+            
+            // Add delay to prevent immediate closing
+            setTimeout(() => {
+                document.addEventListener('click', closeHandler);
+            }, 100);
+        }
+
+        function toggleEmojiPicker() {
+            if (!window.emojiMartData || !window.emojiPicker) {
+                showAlert('Emoji picker is still loading...', 'warning');
+                return;
+            }
+
+            const picker = document.getElementById('emojiPicker');
+            const isHidden = picker.classList.contains('hidden');
+            
+            if (isHidden) {
+                picker.innerHTML = '';
+                picker.classList.remove('hidden');
+                
+                new window.emojiPicker({
+                    data: window.emojiMartData,
+                    onEmojiSelect: (emoji) => {
+                        const input = document.getElementById('messageInput');
+                        const cursorPos = input.selectionStart;
+                        const textBefore = input.value.substring(0, cursorPos);
+                        const textAfter = input.value.substring(cursorPos);
+                        input.value = textBefore + emoji.native + textAfter;
+                        input.selectionStart = input.selectionEnd = cursorPos + emoji.native.length;
+                        input.focus();
+                        picker.classList.add('hidden');
+                    },
+                    theme: 'dark',
+                    set: 'native',
+                    showPreview: false,
+                    showSkinTones: false,
+                    maxFrequentRows: 2,
+                    position: 'top-end'
+                }).render({ container: picker });
+            } else {
+                picker.classList.add('hidden');
+            }
+        }
+
+        function toggleReaction(messageId, emoji) {
+            if (!socket?.connected) return;
+            
+            socket.emit('toggleReaction', {
+                messageId,
+                emoji
+            });
+        }
+
+        function updateOnlineUsers(users) {
+            const usersContainer = document.getElementById('onlineUsers');
+            if (!users || users.length === 0) {
+                usersContainer.innerHTML = '<p class="text-text-secondary">No users online</p>';
+                return;
+            }
+
+            // Remove duplicates and sort
+            const uniqueUsers = [...new Set(users)].sort();
+            
+            usersContainer.innerHTML = uniqueUsers
+                .map(user => `
+                    <div class="flex items-center p-2 rounded hover:bg-opacity-10 hover:bg-accent-purple transition-colors">
+                        <span class="user-status mr-2"></span>
+                        <span class="text-text-primary">${user}</span>
+                    </div>
+                `)
+                .join('');
+        }
+
+        function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const content = input.value.trim();
+            
+            if (!currentChannel) {
+                showAlert('Please select a channel first', 'warning');
+                return;
+            }
+            
+            if (!content || !socket?.connected) return;
+
+            const messageData = {
+                message: content,
+                channel: currentChannel
+            };
+
+            if (replyingTo) {
+                messageData.replyTo = replyingTo;
+            }
+
+            fetch('/api/chat/sendMessage', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${currentUser.token}`
+                },
+                body: JSON.stringify(messageData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    input.value = '';
+                    if (replyingTo) cancelReply();
+                } else {
+                    showAlert('Failed to send message', 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Error sending message:', error);
+                showAlert('Error sending message', 'danger');
+            });
+        }
+
+        function editMessage(messageId) {
+            console.log('Editing message with ID:', messageId);
+            
+            if (!messageId) {
+                console.error('No message ID provided for editing');
+                return;
+            }
+
+            const messageElement = document.getElementById(`message-${messageId}`);
+            if (!messageElement) {
+                console.error('Message element not found:', messageId);
+                return;
+            }
+
+            const contentElement = messageElement.querySelector('.message-content');
+            if (!contentElement) {
+                console.error('Message content element not found');
+                return;
+            }
+
+            const currentContent = contentElement.textContent;
+            messageElement.dataset.originalContent = currentContent;
+            
+            // Create edit container with explicit message ID reference
+            contentElement.innerHTML = `
+                <div class="edit-container" data-message-id="${messageId}">
+                    <textarea class="message-input edit-textarea w-full p-2 bg-opacity-10 bg-white border border-accent-teal rounded text-white">${currentContent}</textarea>
+                    <div class="flex justify-end mt-2 gap-2">
+                        <button onclick="cancelEdit('${messageId}')" 
+                                class="bg-gray-600 hover:bg-gray-700 text-white px-3 py-1 rounded transition-all">
+                            Cancel
+                        </button>
+                        <button onclick="saveEdit('${messageId}')" 
+                                class="bg-accent-teal hover:bg-opacity-80 text-white px-3 py-1 rounded transition-all">
+                            Save
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            // Focus the textarea and place cursor at the end
+            const textarea = contentElement.querySelector('.edit-textarea');
+            if (textarea) {
+                textarea.focus();
+                textarea.selectionStart = textarea.selectionEnd = textarea.value.length;
+            }
+        }
+
+        async function saveEdit(messageId) {
+            console.log('Saving edit for message ID:', messageId);
+            
+            try {
+                // Validate message ID
+                if (!messageId) {
+                    throw new Error('Message ID is required');
+                }
+
+                // Get message element and validate
+                const messageElement = document.getElementById(`message-${messageId}`);
+                if (!messageElement) {
+                    throw new Error('Message element not found');
+                }
+
+                // Get textarea and validate content
+                const textarea = messageElement.querySelector('.edit-textarea');
+                if (!textarea) {
+                    throw new Error('Edit textarea not found');
+                }
+
+                const newContent = textarea.value.trim();
+                if (!newContent) {
+                    throw new Error('Message content cannot be empty');
+                }
+
+                // Check if user is authorized to edit this message
+                const messageUsername = messageElement.querySelector('.font-semibold.text-accent-purple').textContent;
+                const isOwnMessage = messageUsername === currentUser.username;
+                const isAdmin = currentUser.role === 'admin';
+                
+                console.log('Authorization check:', {
+                    messageUsername,
+                    currentUsername: currentUser.username,
+                    isOwnMessage,
+                    userRole: currentUser.role,
+                    isAdmin,
+                    token: currentUser.token ? 'present' : 'missing'
+                });
+                
+                if (!isOwnMessage && !isAdmin) {
+                    throw new Error('You are not authorized to edit this message');
+                }
+
+                console.log('Updating message:', { messageId, newContent, channel: currentChannel });
+
+                // First update in database via REST API
+                const headers = {
+                    'Authorization': `Bearer ${currentUser.token}`,
+                    'Content-Type': 'application/json',
+                    'X-User-Role': currentUser.role,
+                    'X-User-Name': currentUser.username
+                };
+
+                console.log('Request headers:', headers);
+
+                // Get the message's user ID from the server first
+                const messageResponse = await fetch(`/api/messages/${messageId}`, {
+                    method: 'GET',
+                    headers: headers
+                });
+
+                if (!messageResponse.ok) {
+                    throw new Error('Failed to fetch message details');
+                }
+
+                const messageDetails = await messageResponse.json();
+                console.log('Message details:', messageDetails);
+
+                const response = await fetch(`/api/messages/${messageId}`, {
+                    method: 'PUT',
+                    headers: headers,
+                    body: JSON.stringify({ 
+                        content: newContent,
+                        channel: currentChannel,
+                        userId: messageDetails.userId // Use the correct user ID from the message
+                    })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    console.error('Server error response:', errorData);
+                    throw new Error(errorData.message || 'Failed to update message');
+                }
+
+                const responseData = await response.json();
+                console.log('Server response:', responseData);
+
+                // Then emit socket event for real-time updates if socket is connected
+                if (socket?.connected) {
+                    socket.emit('editMessage', {
+                        messageId: messageId,
+                        content: newContent,
+                        channel: currentChannel
+                    });
+                }
+
+                // Update UI
+                const contentElement = messageElement.querySelector('.message-content');
+                if (contentElement) {
+                    contentElement.textContent = newContent;
+                    contentElement.dataset.messageId = messageId;
+
+                    // Add edited indicator if not already present
+                    let editedIndicator = messageElement.querySelector('.edited-indicator');
+                    if (!editedIndicator) {
+                        editedIndicator = document.createElement('span');
+                        editedIndicator.className = 'edited-indicator text-xs ml-1';
+                        editedIndicator.textContent = ' (edited)';
+                        messageElement.querySelector('.text-text-secondary').appendChild(editedIndicator);
+                    }
+                    editedIndicator.classList.remove('hidden');
+                }
+
+                // Show success message
+                showAlert('Message updated successfully', 'success');
+            } catch (error) {
+                console.error('Error updating message:', error);
+                showAlert(error.message || 'Failed to update message', 'error');
+                
+                // Revert to original content on error
+                const messageElement = document.getElementById(`message-${messageId}`);
+                if (messageElement) {
+                    const contentElement = messageElement.querySelector('.message-content');
+                    const originalContent = messageElement.dataset.originalContent;
+                    if (contentElement && originalContent) {
+                        contentElement.textContent = originalContent;
+                        contentElement.dataset.messageId = messageId;
+                    }
+                }
+            }
+        }
+
+        function cancelEdit(messageId) {
+            const messageElement = document.getElementById(`message-${messageId}`);
+            if (!messageElement) return;
+
+            const contentElement = messageElement.querySelector('.message-content');
+            const originalContent = messageElement.dataset.originalContent;
+            
+            if (contentElement && originalContent) {
+                contentElement.textContent = originalContent;
+                editingMessageId = null;
+            }
+        }
+
+        function deleteMessage(messageId) {
+            if (!socket?.connected) {
+                showAlert('Not connected to chat server', 'error');
+                return;
+            }
+            
+            console.log('Deleting message:', messageId);
+            
+            // Emit delete event to server
+            socket.emit('deleteMessage', { messageId });
+            
+            // Remove from message cache using _id
+            if (messageCache[currentChannel]) {
+                messageCache[currentChannel] = messageCache[currentChannel].filter(m => m._id !== messageId);
+            }
+            
+            // Remove from UI with animation
+            const messageElement = document.getElementById(`message-${messageId}`);
+            if (messageElement) {
+                messageElement.style.opacity = '0';
+                messageElement.style.transform = 'translateX(-20px)';
+                messageElement.style.transition = 'all 0.3s ease';
+                
+                setTimeout(() => {
+                    messageElement.remove();
+                }, 300);
+            }
+        }
+
+        function showAlert(message, type) {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `fixed top-4 right-4 p-4 rounded shadow-lg alert-${type} fade-in`;
+            alertDiv.style.zIndex = '9999';
+            alertDiv.style.backgroundColor = type === 'success' ? 'var(--accent-teal)' : 
+                                           type === 'danger' ? '#f44336' : 
+                                           type === 'warning' ? '#ff9800' : 'var(--accent-purple)';
+            alertDiv.style.color = 'white';
+            alertDiv.textContent = message;
+            
+            document.body.appendChild(alertDiv);
+            
+            setTimeout(() => {
+                alertDiv.classList.add('fade-out');
+                setTimeout(() => alertDiv.remove(), 300);
+            }, 4700);
+        }
+
+        // Handle typing indicator
+        function handleTyping() {
+            const now = Date.now();
+            if (now - lastTypingSignal > 3000) {
+                socket.emit('typing', { channel: currentChannel });
+                lastTypingSignal = now;
+            }
+            
+            clearTimeout(typingTimeout);
+            typingTimeout = setTimeout(() => {
+                socket.emit('stopTyping', { channel: currentChannel });
+            }, 1000);
+        }
+
+        function replyToMessage(messageId) {
+            const messageElement = document.getElementById(`message-${messageId}`);
+            const username = messageElement.querySelector('.font-bold').textContent;
+            const content = messageElement.querySelector('.message-content').textContent;
+            
+            replyingTo = {
+                messageId,
+                username,
+                content
+            };
+            
+            document.getElementById('replyPreview').classList.remove('hidden');
+            document.getElementById('replyUsername').textContent = username;
+            document.getElementById('replyContent').textContent = content;
+            document.getElementById('messageInput').focus();
+        }
+
+        function cancelReply() {
+            replyingTo = null;
+            document.getElementById('replyPreview').classList.add('hidden');
+        }
+
+        function openImagePreview(url) {
+            const modal = document.createElement('div');
+            modal.className = 'fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50';
+            modal.onclick = () => modal.remove();
+            
+            const img = document.createElement('img');
+            img.src = url;
+            img.className = 'max-w-[90%] max-h-[90vh] object-contain';
+            
+            modal.appendChild(img);
+            document.body.appendChild(modal);
+        }
+
+        // Handle enter key for sending messages
+        document.getElementById('messageInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        async function login(event) {
+            event.preventDefault();
+            const loginInput = document.getElementById('loginInput').value;
+            const password = document.getElementById('loginPassword').value;
+
+            try {
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ email: loginInput, password })
+                });
+
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(data.message || 'Login failed');
+                }
+
+                // Store user data
+                localStorage.setItem('token', data.token);
+                localStorage.setItem('userRole', data.role);
+                localStorage.setItem('userEmail', data.email);
+                localStorage.setItem('username', data.username);
+                localStorage.setItem('currentPage', data.defaultPage || 'home');
+
+                console.log('Login successful:', {
+                    username: data.username,
+                    role: data.role,
+                    email: data.email
+                });
+
+                // Initialize chat
+                window.location.reload();
+            } catch (error) {
+                showAlert(error.message || 'Login failed', 'danger');
+            }
+        }
+
+        async function register(event) {
+            event.preventDefault();
+            const email = document.getElementById('regEmail').value;
+            const username = document.getElementById('regUsername').value;
+            const password = document.getElementById('regPassword').value;
+            const confirmPassword = document.getElementById('confirmPassword').value;
+
+            if (password !== confirmPassword) {
+                showAlert('Passwords do not match', 'danger');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/register', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ email, username, password })
+                });
+
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(data.message || 'Registration failed');
+                }
+
+                showAlert('Registration successful! Please login.', 'success');
+                toggleRegister();
+                
+                // Clear the registration form
+                document.getElementById('regEmail').value = '';
+                document.getElementById('regUsername').value = '';
+                document.getElementById('regPassword').value = '';
+                document.getElementById('confirmPassword').value = '';
+            } catch (error) {
+                showAlert(error.message || 'Registration failed', 'danger');
+            }
+        }
+
+        function toggleRegister() {
+            const loginForm = document.getElementById('loginForm');
+            const registerForm = document.getElementById('registerForm');
+            
+            if (registerForm.style.display === 'none') {
+                loginForm.style.display = 'none';
+                registerForm.style.display = 'block';
+            } else {
+                loginForm.style.display = 'block';
+                registerForm.style.display = 'none';
+            }
+        }
+
+        // Show admin controls if user is admin
+        function updateAdminControls() {
+            const adminControls = document.getElementById('adminControls');
+            const isAdmin = localStorage.getItem('userRole') === 'admin';
+            if (adminControls) {
+                adminControls.style.display = isAdmin ? 'block' : 'none';
+            }
+        }
+
+        // Channel Management
+        async function showChannelManager() {
+            const modal = document.createElement('div');
+            modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+            
+            try {
+                const response = await fetch('/api/channels', {
+                    headers: {
+                        'Authorization': `Bearer ${currentUser.token}`
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to fetch channels');
+                }
+                
+                const channels = await response.json();
+                
+                modal.innerHTML = `
+                    <div class="modal-content w-full max-w-lg mx-4" style="background: var(--secondary-bg); border: 1px solid var(--accent-purple); border-radius: 12px; max-height: 90vh; overflow-y: auto;">
+                        <div class="modal-header p-4 border-b border-accent-purple">
+                            <h3 class="text-xl font-bold text-accent-purple">Channel Manager</h3>
+                        </div>
+                        <div class="modal-body p-4">
+                            <div class="channel-form bg-opacity-10 bg-accent-purple rounded-lg p-4 mb-4">
+                                <h4 class="text-lg mb-3 text-accent-teal">Add New Channel</h4>
+                                <input type="text" id="newChannelName" placeholder="Channel name (used for URLs)" 
+                                       class="w-full mb-3 bg-opacity-10 bg-white border border-accent-teal rounded p-2 text-white">
+                                <input type="text" id="newChannelDisplayName" placeholder="Display name (shown to users)" 
+                                       class="w-full mb-3 bg-opacity-10 bg-white border border-accent-teal rounded p-2 text-white">
+                                <div class="flex items-center mb-3">
+                                    <label class="ai-toggle-label">
+                                        <input type="checkbox" id="aiEnabled">
+                                        <div class="toggle-track">
+                                            <div class="toggle-dot"></div>
+                                        </div>
+                                        <span class="ml-3 text-accent-teal">Enable AI Assistant</span>
+                                    </label>
+                                </div>
+                                <button onclick="addChannel()" 
+                                        class="bg-accent-teal hover:bg-opacity-80 text-white px-4 py-2 rounded-lg transition-all">
+                                    Add Channel
+                                </button>
+                            </div>
+                            
+                            <div class="existing-channels">
+                                <h4 class="text-lg mb-3 text-accent-teal">Existing Channels</h4>
+                                <div class="channel-list space-y-2">
+                                    ${channels.map(channel => `
+                                        <div class="channel-list-item bg-opacity-10 bg-accent-purple rounded-lg p-3 flex justify-between items-center">
+                                            <div>
+                                                <span class="text-accent-teal">${channel.aiEnabled ? '🤖' : '💬'}</span>${channel.displayName || channel.name}
+                                                ${channel.aiEnabled ? 
+                                                    '<span class="ml-2 text-xs text-accent-teal">(AI Enabled)</span>' : 
+                                                    '<span class="ml-2 text-xs text-gray-400">(Human chat only)</span>'}
+                                            </div>
+                                            <div class="channel-controls flex gap-2">
+                                                <button onclick="renameChannel('${channel.name.replace(/'/g, "\\'")}', '${(channel.displayName || channel.name).replace(/'/g, "\\'")}')" 
+                                                        class="bg-accent-purple hover:bg-opacity-80 text-white px-3 py-1 rounded transition-colors">
+                                                    Rename
+                                                </button>
+                                                ${channel.aiEnabled ? 
+                                                    `<button onclick="showAISettings('${channel._id}')"
+                                                            class="bg-accent-purple hover:bg-opacity-80 text-white px-3 py-1 rounded transition-colors">
+                                                        Edit AI
+                                                    </button>` : ''}
+                                                <button onclick="toggleAI('${channel.name.replace(/'/g, "\\'")}', ${!channel.aiEnabled})" 
+                                                        class="text-accent-teal hover:text-accent-purple transition-colors">
+                                                    ${channel.aiEnabled ? 'Disable AI' : 'Enable AI'}
+                                                </button>
+                                                <button onclick="deleteChannel('${channel.name.replace(/'/g, "\\'")}')" 
+                                                        class="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded transition-colors">
+                                                    Delete
+                                                </button>
+                                            </div>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer p-4 border-t border-accent-purple flex justify-end">
+                            <button onclick="this.closest('.modal-content').parentElement.remove()" 
+                                    class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-all">
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                `;
+                
+                document.body.appendChild(modal);
+            } catch (error) {
+                console.error('Error loading channels:', error);
+                showAlert('Failed to load channels', 'danger');
+            }
+        }
+
+        async function addChannel() {
+            const channelName = document.getElementById('newChannelName').value.trim();
+            const displayName = document.getElementById('newChannelDisplayName').value.trim() || channelName;
+            const aiEnabled = document.getElementById('aiEnabled').checked;
+            
+            console.log('Attempting to create channel:', { channelName, displayName, aiEnabled });
+            
+            if (!channelName) {
+                showAlert('Please enter a channel name', 'warning');
+                return;
+            }
+            
+            try {
+                console.log('Sending request to create channel...');
+                const response = await fetch('/api/channels', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${currentUser.token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ 
+                        name: channelName,
+                        displayName: displayName,
+                        aiEnabled: aiEnabled
+                    })
+                });
+                
+                const result = await response.json();
+                console.log('Server response:', result);
+                
+                if (!response.ok) {
+                    throw new Error(result.message || 'Failed to create channel');
+                }
+                
+                showAlert('Channel created successfully', 'success');
+                document.querySelector('.modal-content').parentElement.remove();
+                await updateChannelList();
+                
+                // Initialize message cache for the new channel using the sanitized name
+                messageCache[result.name] = [];
+            } catch (error) {
+                console.error('Error creating channel:', error);
+                showAlert(error.message || 'Failed to create channel', 'danger');
+            }
+        }
+
+        async function toggleAI(channelName, enable) {
+            try {
+                const response = await fetch(`/api/channels/${channelName}/toggleAI`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${currentUser.token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ aiEnabled: enable })
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.message || 'Failed to update AI settings');
+                }
+                
+                showAlert(`AI ${enable ? 'enabled' : 'disabled'} for channel ${channelName}`, 'success');
+                document.querySelector('.modal-content').parentElement.remove();
+                showChannelManager();
+            } catch (error) {
+                console.error('Error updating AI settings:', error);
+                showAlert('Failed to update AI settings', 'danger');
+            }
+        }
+
+        async function deleteChannel(channelName) {
+            if (!channelName) {
+                showAlert('Cannot delete: Channel name is missing', 'danger');
+                return;
+            }
+
+            try {
+                console.log('Attempting to delete channel:', channelName);
+                
+                const response = await fetch(`/api/channels/${encodeURIComponent(channelName)}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${currentUser.token}`
+                    }
+                });
+
+                console.log('Delete response status:', response.status);
+                const data = await response.json();
+                console.log('Delete channel response:', data);
+                
+                if (!response.ok) {
+                    throw new Error(data.message || 'Failed to delete channel');
+                }
+
+                // Remove from message cache
+                delete messageCache[channelName];
+                
+                // If we're in the deleted channel, switch to the first available channel
+                if (currentChannel === channelName) {
+                    const availableChannels = await fetch('/api/channels', {
+                        headers: {
+                            'Authorization': `Bearer ${currentUser.token}`
+                        }
+                    }).then(res => res.json());
+                    
+                    if (availableChannels.length > 0) {
+                        switchChannel(availableChannels[0].name);
+                    }
+                }
+                
+                showAlert('Channel deleted successfully', 'success');
+                
+                // Refresh the channel list
+                await updateChannelList();
+                
+                // Close the channel manager modal if it's open
+                const modal = document.querySelector('.modal-content')?.parentElement;
+                if (modal) {
+                    modal.remove();
+                }
+            } catch (error) {
+                console.error('Error deleting channel:', error);
+                showAlert(error.message || 'Failed to delete channel', 'danger');
+            }
+        }
+
+        // User Management
+        async function showUserManager() {
+            const modal = document.createElement('div');
+            modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+            
+            try {
+                const response = await fetch('/api/users', {
+                    headers: {
+                        'Authorization': `Bearer ${currentUser.token}`
+                    }
+                });
+                const users = await response.json();
+                
+                // Log users data to check isBanned status
+                console.log('Fetched users:', users);
+                
+                modal.innerHTML = `
+                    <div class="modal-content w-full max-w-lg mx-4" style="background: var(--secondary-bg); border: 1px solid var(--accent-purple); border-radius: 12px; max-height: 90vh; overflow-y: auto;">
+                        <div class="modal-header p-4 border-b border-accent-purple">
+                            <h3 class="text-xl font-bold text-accent-purple">User Manager</h3>
+                        </div>
+                        <div class="modal-body p-4">
+                            <div class="user-list space-y-2">
+                                ${users.map(user => {
+                                    // Log each user's data for debugging
+                                    console.log('Processing user:', {
+                                        username: user.username,
+                                        email: user.email,
+                                        role: user.role,
+                                        isBanned: user.isBanned,
+                                        _id: user._id
+                                    });
+                                    
+                                    return `
+                                        <div class="user-item bg-opacity-10 bg-accent-purple rounded-lg p-3 flex justify-between items-center">
+                                            <div class="user-info">
+                                                <div class="font-semibold text-accent-teal">${user.username || user.email}</div>
+                                                <div class="text-sm text-gray-400">${user.email}</div>
+                                                ${user.role === 'admin' ? 
+                                                    '<span class="inline-block px-2 py-1 text-xs rounded bg-accent-purple text-white mt-1">Admin</span>' : 
+                                                    user.isBanned === true ?
+                                                    '<span class="inline-block px-2 py-1 text-xs rounded bg-red-600 text-white mt-1">Banned</span>' : ''}
+                                            </div>
+                                            ${user.role !== 'admin' ? `
+                                                <div class="user-controls flex gap-2">
+                                                    ${user.isBanned === true ? 
+                                                        `<button onclick="unbanUser('${user._id}')" 
+                                                                class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded transition-all">
+                                                            Unban User
+                                                        </button>` : 
+                                                        `<button onclick="banUser('${user._id}')" 
+                                                                class="bg-yellow-600 hover:bg-yellow-700 text-white px-3 py-1 rounded transition-all">
+                                                            Ban User
+                                                        </button>`
+                                                    }
+                                                    <button onclick="deleteUser('${user._id}')" 
+                                                            class="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded transition-all">
+                                                        Delete User
+                                                    </button>
+                                                </div>
+                                            ` : ''}
+                                        </div>
+                                    `;
+                                }).join('')}
+                            </div>
+                        </div>
+                        <div class="modal-footer p-4 border-t border-accent-purple flex justify-end">
+                            <button onclick="this.closest('.modal-content').parentElement.remove()" 
+                                    class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-all">
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                `;
+                
+                document.body.appendChild(modal);
+            } catch (error) {
+                console.error('Error loading users:', error);
+                showAlert('Failed to load users', 'danger');
+            }
+        }
+
+        async function banUser(userId) {
+            try {
+                console.log('🚫 Banning user:', userId);
+                
+                const response = await fetch(`/api/users/${userId}/ban`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${currentUser.token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const responseData = await response.json();
+                console.log('📥 Server response:', {
+                    status: response.status,
+                    statusText: response.statusText,
+                    data: responseData
+                });
+                
+                if (!response.ok) {
+                    throw new Error(responseData.message || 'Failed to ban user');
+                }
+                
+                console.log('✅ User banned successfully');
+                showAlert('User banned successfully', 'success');
+                
+                // Refresh the user manager modal
+                const modal = document.querySelector('.modal-content')?.parentElement;
+                if (modal) {
+                    console.log('🔄 Refreshing user manager');
+                    modal.remove();
+                    showUserManager();
+                }
+            } catch (error) {
+                console.error('❌ Error banning user:', error);
+                showAlert(error.message || 'Failed to ban user', 'danger');
+            }
+        }
+
+        async function deleteUser(userId) {
+            try {
+                console.log('🗑️ Deleting user:', userId);
+                
+                const response = await fetch(`/api/users/${userId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${currentUser.token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const responseData = await response.json();
+                console.log('📥 Server response:', {
+                    status: response.status,
+                    statusText: response.statusText,
+                    data: responseData
+                });
+                
+                if (!response.ok) {
+                    throw new Error(responseData.message || 'Failed to delete user');
+                }
+                
+                console.log('✅ User deleted successfully');
+                showAlert('User deleted successfully', 'success');
+                
+                // Refresh the user manager modal
+                const modal = document.querySelector('.modal-content')?.parentElement;
+                if (modal) {
+                    console.log('🔄 Refreshing user manager');
+                    modal.remove();
+                    showUserManager();
+                }
+            } catch (error) {
+                console.error('❌ Error deleting user:', error);
+                showAlert(error.message || 'Failed to delete user', 'danger');
+            }
+        }
+
+        async function unbanUser(userId) {
+            try {
+                console.log('🔓 Unbanning user:', userId);
+                
+                const response = await fetch(`/api/users/${userId}/unban`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${currentUser.token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const responseData = await response.json();
+                console.log('📥 Server response:', {
+                    status: response.status,
+                    statusText: response.statusText,
+                    data: responseData
+                });
+                
+                if (!response.ok) {
+                    throw new Error(responseData.message || 'Failed to unban user');
+                }
+                
+                console.log('✅ User unbanned successfully');
+                showAlert('User unbanned successfully', 'success');
+                
+                // Refresh the user manager modal
+                const modal = document.querySelector('.modal-content')?.parentElement;
+                if (modal) {
+                    console.log('🔄 Refreshing user manager');
+                    modal.remove();
+                    showUserManager();
+                }
+            } catch (error) {
+                console.error('❌ Error unbanning user:', error);
+                showAlert(error.message || 'Failed to unban user', 'danger');
+            }
+        }
+
+        // Update channel list
+        async function updateChannelList() {
+            try {
+                const response = await fetch('/api/channels', {
+                    headers: {
+                        'Authorization': `Bearer ${currentUser.token}`
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to fetch channels');
+                }
+                
+                const channels = await response.json();
+                const channelList = document.getElementById('channelList');
+                channelList.innerHTML = '';  // Clear existing channels
+                
+                // Add all channels without special treatment
+                channels.forEach(channel => {
+                    const displayName = channel.displayName || channel.name;
+                    channelList.innerHTML += `
+                        <div id="channel-${channel.name}" class="channel-button ${currentChannel === channel.name ? 'active' : ''}" onclick="switchChannel('${channel.name}')">
+                            <span class="text-accent-teal mr-2">${channel.aiEnabled ? '🤖' : '💬'}</span>${displayName}
+                            <span class="text-xs text-text-secondary block ml-6">
+                                ${channel.aiEnabled ? 'AI Enabled' : 'Human chat only'}
+                            </span>
+                        </div>
+                    `;
+                    
+                    // Initialize message cache for new channels
+                    if (!messageCache[channel.name]) {
+                        messageCache[channel.name] = [];
+                    }
+                });
+            } catch (error) {
+                console.error('Error updating channel list:', error);
+                showAlert('Failed to update channel list', 'danger');
+            }
+        }
+
+        function showToast(message, type) {
+            showAlert(message, type);
+        }
+
+        function renderNavigationButtons(buttons) {
+            // This function is not needed for the chat room functionality
+            console.log('Navigation buttons rendering skipped in chat room');
+        }
+
+        async function navigateToPage(pageId) {
+            try {
+                console.log('Navigating to page:', pageId);
+                currentPage = pageId;
+                localStorage.setItem('currentPage', pageId);
+            } catch (error) {
+                console.error('Navigation error:', error);
+                showAlert('Failed to navigate: ' + error.message, 'danger');
+            }
+        }
+
+        // Add the showAISettings function
+        async function showAISettings(channelId) {
+            const modal = document.createElement('div');
+            modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+            modal.dataset.channelId = channelId;
+            modal.innerHTML = aiSettingsModalHTML;
+            document.body.appendChild(modal);
+
+            // Wait for the next frame to ensure the modal is rendered
+            await new Promise(resolve => requestAnimationFrame(resolve));
+
+            try {
+                const response = await fetch(`/api/channels/${channelId}/ai-settings`, {
+                    headers: {
+                        'Authorization': `Bearer ${currentUser.token}`
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to fetch AI settings');
+                }
+
+                const settings = await response.json();
+                
+                // Get form elements after modal is rendered
+                const form = document.getElementById('aiSettingsForm');
+                if (!form) {
+                    throw new Error('AI Settings form not found');
+                }
+
+                // Populate form with existing settings
+                const displayNameInput = document.getElementById('aiDisplayName');
+                const personalitySelect = document.getElementById('aiPersonality');
+                const personalityCustom = document.getElementById('aiPersonalityCustom');
+                const focusSelect = document.getElementById('aiFocus');
+                const responseStyleSelect = document.getElementById('aiResponseStyle');
+                const engagementSelect = document.getElementById('aiEngagement');
+                const maxResponseLengthInput = document.getElementById('maxResponseLength');
+                const maxLengthValueSpan = document.getElementById('maxLengthValue');
+
+                if (displayNameInput) displayNameInput.value = settings.displayName || '';
+                if (personalitySelect) personalitySelect.value = settings.personality || 'None';
+                if (personalityCustom) personalityCustom.value = settings.customPersonality || '';
+                if (focusSelect) focusSelect.value = settings.focus || 'MBTI & Personality';
+                if (responseStyleSelect) responseStyleSelect.value = settings.responseStyle || 'Philosophical';
+                if (engagementSelect) engagementSelect.value = settings.engagement || 'Responsive Mentor';
+                if (maxResponseLengthInput) {
+                    const length = Math.min(Math.max(settings.maxResponseLength || 500, 50), 2000);
+                    maxResponseLengthInput.value = length;
+                    if (maxLengthValueSpan) maxLengthValueSpan.textContent = length;
+                }
+                
+            } catch (error) {
+                console.error('Error loading AI settings:', error);
+                showAlert('Failed to load AI settings', 'danger');
+            }
+        }
+
+        // Add the saveAISettings function
+        async function saveAISettings(modal) {
+            try {
+                const channelId = modal.dataset.channelId;
+                if (!channelId) {
+                    throw new Error('Channel ID not found');
+                }
+
+                const personality = document.getElementById('aiPersonality').value;
+                const personalityCustom = document.getElementById('aiPersonalityCustom')?.value || '';
+                const displayName = document.getElementById('aiDisplayName').value || 
+                                  (personality === 'None' ? 'Custom AI' : personality) || 
+                                  'Cognitive Coach';
+                
+                // Combine personality and custom extension if both exist
+                const effectivePersonality = personality === 'None' ? 
+                    personalityCustom : 
+                    personalityCustom ? 
+                        `${personality}. Additional characteristics: ${personalityCustom}` : 
+                        personality;
+                
+                const settings = {
+                    displayName,
+                    personality: effectivePersonality,
+                    personalityCustom,
+                    focus: document.getElementById('aiFocus').value || 'Universal Consciousness',
+                    responseStyle: document.getElementById('aiResponseStyle').value || 'Transcendent',
+                    engagement: document.getElementById('aiEngagement').value || 'Infinite Observer',
+                    maxResponseLength: parseInt(document.getElementById('maxResponseLength').value) || 500
+                };
+
+                // Ensure response length is properly constrained
+                settings.maxResponseLength = Math.max(50, Math.min(2000, settings.maxResponseLength));
+
+                console.log('Saving AI settings for channel:', channelId, settings);
+
+                const response = await fetch(`/api/channels/${channelId}/ai-settings`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${currentUser.token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(settings)
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || 'Failed to save AI settings');
+                }
+
+                showAlert('AI settings saved successfully', 'success');
+                modal.remove();
+                showChannelManager(); // Refresh the channel manager
+            } catch (error) {
+                console.error('Error saving AI settings:', error);
+                showAlert(error.message || 'Failed to save AI settings', 'danger');
+            }
+        }
+
+        // Add the renameChannel function
+        async function renameChannel(channelName, currentDisplayName) {
+            const modal = document.createElement('div');
+            modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+            
+            modal.innerHTML = `
+                <div class="modal-content w-full max-w-lg mx-4" style="background: var(--secondary-bg); border: 1px solid var(--accent-purple); border-radius: 12px;">
+                    <div class="modal-header p-4 border-b border-accent-purple">
+                        <h3 class="text-xl font-bold text-accent-purple">Rename Channel</h3>
+                    </div>
+                    <div class="modal-body p-4">
+                        <div class="form-group mb-4">
+                            <label class="block text-accent-teal mb-2">Channel URL Name (used for URLs)</label>
+                            <input type="text" id="newUrlName" 
+                                   class="w-full bg-opacity-10 bg-white border border-accent-teal rounded p-2 text-white"
+                                   value="${channelName}"
+                                   placeholder="Enter new URL name (letters, numbers, hyphens, underscores only)">
+                            <p class="text-sm text-gray-400 mt-1">Only letters, numbers, hyphens, and underscores allowed</p>
+                        </div>
+                        <div class="form-group">
+                            <label class="block text-accent-teal mb-2">Channel Display Name (shown to users)</label>
+                            <input type="text" id="newDisplayName" 
+                                   class="w-full bg-opacity-10 bg-white border border-accent-teal rounded p-2 text-white"
+                                   value="${currentDisplayName}"
+                                   placeholder="Enter new display name">
+                        </div>
+                    </div>
+                    <div class="modal-footer p-4 border-t border-accent-purple flex justify-end gap-2">
+                        <button onclick="this.closest('.modal-content').parentElement.remove()" 
+                                class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-all">
+                            Cancel
+                        </button>
+                        <button onclick="saveChannelRename('${channelName}')" 
+                                class="bg-accent-teal hover:bg-opacity-80 text-white px-4 py-2 rounded-lg transition-all">
+                            Save
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+        }
+
+        async function saveChannelRename(oldChannelName) {
+            const newUrlName = document.getElementById('newUrlName').value.trim().toLowerCase();
+            const newDisplayName = document.getElementById('newDisplayName').value.trim();
+            
+            if (!newUrlName || !newDisplayName) {
+                showAlert('Please enter both URL name and display name', 'warning');
+                return;
+            }
+
+            // Validate URL name format
+            if (!/^[a-z0-9-_]+$/.test(newUrlName)) {
+                showAlert('URL name can only contain letters, numbers, hyphens, and underscores', 'warning');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/channels/${encodeURIComponent(oldChannelName)}/rename`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${currentUser.token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ 
+                        name: newUrlName,
+                        displayName: newDisplayName 
+                    })
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.message || 'Failed to rename channel');
+                }
+
+                // If we're in the renamed channel, update the current channel name
+                if (currentChannel === oldChannelName) {
+                    currentChannel = newUrlName;
+                }
+                
+                showAlert('Channel renamed successfully', 'success');
+                
+                // Close the rename modal
+                document.querySelector('.modal-content').parentElement.remove();
+                
+                // Refresh the channel manager and channel list
+                await updateChannelList();
+                showChannelManager();
+            } catch (error) {
+                console.error('Error renaming channel:', error);
+                showAlert(error.message || 'Failed to rename channel', 'danger');
+            }
+        }
+
+        // Add handleMessageKeyPress function
+        function handleMessageKeyPress(event) {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault(); // Prevent default to avoid new line
+                sendMessage();
+            }
+        }
+    </script>
+</body>
+</html> 

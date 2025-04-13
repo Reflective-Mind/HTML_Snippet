@@ -1,0 +1,209 @@
+/* Navigation Container */
+.nav-container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 24px;
+    background: rgba(26, 26, 46, 0.95);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--accent-purple);
+}
+
+/* Navigation Button Group */
+.nav-button-group {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+/* Base Navigation Button */
+.nav-button {
+    padding: 12px 24px;
+    font-weight: 600;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+    border: none;
+    background: none;
+    color: #fff;
+}
+
+/* Modern Style */
+.nav-button.modern {
+    background: linear-gradient(135deg, #2193b0, #6dd5ed);
+    clip-path: polygon(0 0, 100% 0, 100% 70%, 90% 100%, 0 100%);
+    padding-right: 30px;
+    box-shadow: 0 4px 15px rgba(33, 147, 176, 0.3);
+}
+
+.nav-button.modern:hover {
+    transform: translateY(-2px) skewX(-2deg);
+    box-shadow: 0 8px 20px rgba(33, 147, 176, 0.4);
+}
+
+.nav-button.modern:active {
+    transform: translateY(1px);
+}
+
+.nav-button.modern::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transform: translateX(-100%);
+}
+
+.nav-button.modern:hover::after {
+    transform: translateX(100%);
+    transition: transform 0.6s ease;
+}
+
+/* Tech Style */
+.nav-button.tech {
+    background: #1a1a2e;
+    border: 2px solid transparent;
+    padding: 14px 28px;
+    position: relative;
+    z-index: 1;
+}
+
+.nav-button.tech::before {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    background: linear-gradient(45deg, #00f2fe, #4facfe);
+    z-index: -1;
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 85% 100%, 85% 15%, 15% 15%, 15% 85%, 85% 85%, 85% 100%, 0 100%);
+    transition: all 0.3s ease;
+}
+
+.nav-button.tech::after {
+    content: '';
+    position: absolute;
+    inset: 2px;
+    background: #1a1a2e;
+    z-index: -1;
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 85% 100%, 85% 15%, 15% 15%, 15% 85%, 85% 85%, 85% 100%, 0 100%);
+}
+
+.nav-button.tech:hover::before {
+    filter: brightness(1.2) hue-rotate(45deg);
+    transform: scale(1.02);
+}
+
+.nav-button.tech:hover {
+    color: #4facfe;
+    text-shadow: 0 0 8px rgba(79, 172, 254, 0.5);
+}
+
+/* Minimal Style */
+.nav-button.minimal {
+    background: transparent;
+    border: 1px solid #e0e0e0;
+    color: #e0e0e0;
+    padding: 12px 28px;
+    position: relative;
+    transition: all 0.4s ease;
+}
+
+.nav-button.minimal::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 0;
+    height: 100%;
+    background: #e0e0e0;
+    transition: width 0.4s ease;
+    z-index: -1;
+}
+
+.nav-button.minimal:hover {
+    color: #1a1a2e;
+}
+
+.nav-button.minimal:hover::before {
+    width: 100%;
+}
+
+/* Animation Keyframes */
+@keyframes borderGlow {
+    0%, 100% { filter: brightness(1); }
+    50% { filter: brightness(1.3); }
+}
+
+/* Admin Tools Section */
+.admin-tools {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    padding-left: 24px;
+    border-left: 1px solid var(--accent-purple);
+}
+
+.admin-tool-button {
+    background: linear-gradient(135deg, #805ad5 0%, #4fd1c5 100%);
+    color: #fff;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-weight: 500;
+    font-size: 13px;
+    transition: all 0.3s ease;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.admin-tool-button:hover {
+    opacity: 0.9;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(128, 90, 213, 0.3);
+}
+
+.admin-tool-button:active {
+    transform: translateY(1px);
+    box-shadow: none;
+}
+
+/* Icons */
+.nav-icon {
+    width: 16px;
+    height: 16px;
+    opacity: 0.9;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .nav-container {
+        flex-direction: column;
+        gap: 12px;
+        padding: 12px;
+    }
+    
+    .nav-button-group {
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+    
+    .admin-tools {
+        border-left: none;
+        border-top: 1px solid var(--accent-purple);
+        padding-left: 0;
+        padding-top: 12px;
+        justify-content: center;
+    }
+    
+    .nav-button {
+        padding: 10px 20px;
+        font-size: 13px;
+    }
+} 
