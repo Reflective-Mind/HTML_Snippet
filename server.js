@@ -175,116 +175,94 @@ app.get('/', async (req, res) => {
 
 // MongoDB connection with better error handling and monitoring
 let mongoConnected = false;
+let connectionAttempted = false;
 
-console.log('🔄 Attempting to connect to MongoDB...');
-console.log('📁 Database URI:', process.env.MONGODB_URI);
-console.log('📁 Database Name:', process.env.DB_NAME || 'html-snippet-builder');
-
-mongoose.connect(process.env.MONGODB_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-    serverSelectionTimeoutMS: 15000, // Increased timeout
-    heartbeatFrequencyMS: 10000,
-    dbName: process.env.DB_NAME || 'html-snippet-builder',  // Explicitly set database name
-    retryWrites: true,
-    w: 'majority',
-    maxPoolSize: 50,
-    socketTimeoutMS: 45000,
-    family: 4  // Force IPv4
-}).then(async () => {
-    console.log('✅ Successfully connected to MongoDB');
-    console.log('📊 Connected to database:', mongoose.connection.db.databaseName);
-    mongoConnected = true;
+// Function to connect to MongoDB
+async function connectToMongoDB() {
+    if (connectionAttempted) return;
+    connectionAttempted = true;
     
+    console.log('🔄 Attempting to connect to MongoDB...');
+    console.log('📁 Database URI:', process.env.MONGODB_URI ? 'Set (hidden for security)' : 'Not set');
+    console.log('📁 Database Name:', process.env.DB_NAME || 'html-snippet-builder');
+    console.log('🔄 Environment:', process.env.NODE_ENV);
+
     try {
-        // Initialize channels first
-        console.log('Initializing settings and default channels...');
-        await initializeChannels();
+        await mongoose.connect(process.env.MONGODB_URI, {
+            useNewUrlParser: true,
+            useUnifiedTopology: true,
+            serverSelectionTimeoutMS: 15000, // Increased timeout
+            heartbeatFrequencyMS: 10000,
+            dbName: process.env.DB_NAME || 'html-snippet-builder',  // Explicitly set database name
+            retryWrites: true,
+            w: 'majority',
+            maxPoolSize: 10, // Reduced for serverless
+            socketTimeoutMS: 30000, // Reduced for serverless
+            family: 4  // Force IPv4
+        });
         
-        // Verify collections exist
-        const collections = await mongoose.connection.db.listCollections().toArray();
-        const collectionNames = collections.map(c => c.name);
-        console.log('📚 Available collections:', collectionNames);
+        console.log('✅ Successfully connected to MongoDB');
+        console.log('📊 Connected to database:', mongoose.connection.db.databaseName);
+        mongoConnected = true;
+        
+        try {
+            // Initialize channels first
+            console.log('Initializing settings and default channels...');
+            await initializeChannels();
+            
+            // Verify collections exist
+            const collections = await mongoose.connection.db.listCollections().toArray();
+            const collectionNames = collections.map(c => c.name);
+            console.log('📚 Available collections:', collectionNames);
 
-        // Check if admin user exists
-        const adminExists = await User.findOne({ email: 'eideken@hotmail.com' });
-        
-        if (!adminExists) {
-            // Create admin user only if it doesn't exist
-        console.log('👤 Creating admin user...');
-        const adminEmail = 'eideken@hotmail.com';
-        const adminPassword = 'sword91';
-            const adminUsername = 'admin';
-        const salt = await bcrypt.genSalt(10);
-        const hashedPassword = await bcrypt.hash(adminPassword, salt);
-        
-        const adminUser = await new User({
-            email: adminEmail,
-                username: adminUsername,
-            password: hashedPassword,
-            role: 'admin',
-            created: new Date(),
-            lastLogin: null
-        }).save();
-        
-        console.log('✅ Admin user created:', adminUser.email);
-        } else if (!adminExists.username) {
-            // Update existing admin user with username if missing
-            adminExists.username = 'admin';
-            await adminExists.save();
-            console.log('✅ Added username to existing admin user');
+            // Initialize settings if they don't exist
+            console.log('⚙️ Checking settings...');
+            await initializeSettings();
+            console.log('✅ Settings verified');
+
+            // Print database status
+            const users = await User.countDocuments();
+            const pages = await Page.countDocuments();
+            const settings = await Settings.countDocuments();
+            
+            console.log('📊 Database Status:');
+            console.log(`- Users: ${users}`);
+            console.log(`- Pages: ${pages}`);
+            console.log(`- Settings: ${settings}`);
+            
+            console.log('\n✨ Server ready to use!');
+        } catch (error) {
+            console.error('❌ Error in initialization:', error);
+            if (process.env.NODE_ENV !== 'vercel') {
+                process.exit(1);
+            }
         }
-
-        // Check if home page exists
-        const homePageExists = await Page.findOne({ id: 'home' });
-        
-        if (!homePageExists) {
-            // Create home page only if it doesn't exist
-        console.log('📄 Creating home page...');
-        const homePage = await new Page({
-            id: 'home',
-            name: 'Home',
-            snippets: [{
-                id: 1,
-                html: '<div class="welcome-message" style="text-align: center; padding: 20px;"><h1>Welcome to Your Page</h1><p>This is your default home page. Log in as admin to customize it.</p></div>',
-                position: { x: 100, y: 100 },
-                size: { width: 400, height: 200 }
-            }],
-            navButtons: [],
-            isDefault: true,
-            created: new Date(),
-            updated: new Date()
-        }).save();
-        
-        console.log('✅ Home page created');
+    } catch (err) {
+        console.error('❌ MongoDB connection error:', err);
+        mongoConnected = false;
+        if (process.env.NODE_ENV !== 'vercel') {
+            process.exit(1);
         }
-
-        // Initialize settings if they don't exist
-        console.log('⚙️ Checking settings...');
-        await initializeSettings();
-        console.log('✅ Settings verified');
-
-        // Print database status
-        const users = await User.countDocuments();
-        const pages = await Page.countDocuments();
-        const settings = await Settings.countDocuments();
-        
-        console.log('📊 Database Status:');
-        console.log(`- Users: ${users}`);
-        console.log(`- Pages: ${pages}`);
-        console.log(`- Settings: ${settings}`);
-        
-        console.log('\n✨ Server ready to use!');
-
-    } catch (error) {
-        console.error('❌ Error in initialization:', error);
-        monitoring.trackError(error);
-        process.exit(1);
     }
-}).catch(err => {
-    console.error('❌ MongoDB connection error:', err);
-    monitoring.trackError(err);
-    process.exit(1);
+}
+
+// Connect to MongoDB immediately if we're not in a serverless environment
+if (process.env.NODE_ENV !== 'vercel') {
+    connectToMongoDB();
+} else {
+    console.log('⏳ MongoDB connection deferred in serverless environment');
+}
+
+// Add a middleware to ensure MongoDB is connected for each request in serverless environment
+app.use(async (req, res, next) => {
+    if (process.env.NODE_ENV === 'vercel' && !mongoConnected) {
+        try {
+            await connectToMongoDB();
+        } catch (err) {
+            console.error('Failed to connect to MongoDB in middleware:', err);
+        }
+    }
+    next();
 });
 
 // Monitor MongoDB connection

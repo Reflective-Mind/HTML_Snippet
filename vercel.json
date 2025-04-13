@@ -12,15 +12,12 @@
     ],
     "routes": [
         {
-            "src": "/api/(.*)",
+            "src": "/api/health-check",
             "dest": "api/index.js"
         },
         {
-            "src": "/(.*\\.(js|css|png|jpg|jpeg|gif|ico|html))",
-            "dest": "/public/$1"
-        },
-        {
-            "handle": "filesystem"
+            "src": "/api/(.*)",
+            "dest": "api/index.js"
         },
         {
             "src": "/(.*)",
