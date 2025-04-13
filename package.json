@@ -6,8 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "client": "cd client && npm start",
-    "build": "cd client && npm run build",
+    "build": "npm install",
     "test": "jest",
     "test:e2e": "cypress run",
     "lint": "eslint .",
