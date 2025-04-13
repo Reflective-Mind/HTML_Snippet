@@ -16,13 +16,22 @@
             "dest": "server.js"
         },
         {
+            "src": "/(.*\\.(js|css|png|jpg|jpeg|gif|ico|html))",
+            "dest": "/public/$1"
+        },
+        {
+            "handle": "filesystem"
+        },
+        {
             "src": "/(.*)",
             "dest": "server.js"
         }
     ],
     "env": {
-        "REACT_APP_API_URL": "https://mbti-render.onrender.com",
-        "REACT_APP_SOCKET_URL": "https://mbti-render.onrender.com",
-        "NODE_ENV": "production"
+        "MONGODB_URI": "mongodb+srv://keneide91:3N6L1x0jeIhVX5wP@mbti-insights.s3vrf.mongodb.net/?retryWrites=true&w=majority&appName=mbti-insights",
+        "JWT_SECRET": "cd06a943f7e3a56b2f7c8836736c0d6f2e3b58f9c742a563",
+        "MISTRAL_API_KEY": "pjTVzQVIZyYNzWj7mjm5aysVYippTADy",
+        "NODE_ENV": "production",
+        "PORT": "10000"
     }
 } 

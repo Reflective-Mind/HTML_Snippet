@@ -174,14 +174,14 @@ let mongoConnected = false;
 
 console.log('🔄 Attempting to connect to MongoDB...');
 console.log('📁 Database URI:', process.env.MONGODB_URI);
-console.log('📁 Database Name: html-snippet-builder');
+console.log('📁 Database Name:', process.env.DB_NAME || 'html-snippet-builder');
 
 mongoose.connect(process.env.MONGODB_URI, {
     useNewUrlParser: true,
     useUnifiedTopology: true,
-    serverSelectionTimeoutMS: 10000, // Increased timeout
+    serverSelectionTimeoutMS: 15000, // Increased timeout
     heartbeatFrequencyMS: 10000,
-    dbName: 'html-snippet-builder',  // Explicitly set database name
+    dbName: process.env.DB_NAME || 'html-snippet-builder',  // Explicitly set database name
     retryWrites: true,
     w: 'majority',
     maxPoolSize: 50,
@@ -2350,8 +2350,9 @@ app.put('/api/messages/:messageId', authenticateUser, async (req, res) => {
     }
 });
 
-// Make sure to add this at the end of your routes, just before starting the server
+// Make sure this is at the end of all your route definitions, just before starting the server
 app.get('*', (req, res) => {
+    console.log('Fallback route hit:', req.url);
     res.sendFile('index.html', { root: './public' });
 });
 
