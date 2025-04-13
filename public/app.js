@@ -1047,6 +1047,40 @@ async function savePositionImmediately(snippetId, position) {
     }
 }
 
+// Function to forcefully save the size immediately (no debounce)
+async function saveSizeImmediately(snippetId, size) {
+    try {
+        console.log(`Saving size immediately for snippet ${snippetId}:`, size);
+        const page = await getCurrentPage();
+        if (!page) throw new Error('Failed to get current page');
+
+        // Find the snippet to update
+        const snippetIndex = page.snippets.findIndex(s => s.id === snippetId);
+        if (snippetIndex === -1) {
+            console.error(`Snippet ${snippetId} not found in current page`);
+            return;
+        }
+
+        // Create a new array with the updated snippet
+        const updatedSnippets = [...page.snippets];
+        updatedSnippets[snippetIndex] = {
+            ...updatedSnippets[snippetIndex],
+            size
+        };
+
+        // Save the updated page
+        await updatePage({ 
+            ...page, 
+            snippets: updatedSnippets 
+        });
+        
+        console.log(`Size saved immediately for snippet ${snippetId}:`, size);
+    } catch (error) {
+        console.error('Immediate size update error:', error);
+        showAlert('Failed to save size: ' + error.message, 'danger');
+    }
+}
+
 // Updated setupDragAndResize function
 function setupDragAndResize() {
     const snippets = document.querySelectorAll('.snippet');
@@ -1097,6 +1131,9 @@ function setupDragAndResize() {
             if (isDragging) {
                 // Force an immediate position save on mouse up
                 await savePositionImmediately(snippetId, currentPosition);
+            } else if (isResizing) {
+                // Force an immediate size save on mouse up
+                await saveSizeImmediately(snippetId, currentSize);
             }
             
             isDragging = false;
@@ -1109,7 +1146,13 @@ function setupDragAndResize() {
             // Get snippet ID
             snippetId = parseInt(snippet.id.split('-')[1]);
             
-            if (e.target.classList.contains('resize-handle')) {
+            // Debug info
+            console.log('MouseDown event on snippet:', snippetId);
+            console.log('Target element:', e.target);
+            console.log('Element classes:', e.target.className);
+            console.log('Is resize-handle?', e.target.classList.contains('resize-handle'));
+            
+            if (e.target.classList.contains('resize-handle') || e.target.closest('.resize-handle')) {
                 isResizing = true;
                 startWidth = snippet.offsetWidth;
                 startHeight = snippet.offsetHeight;

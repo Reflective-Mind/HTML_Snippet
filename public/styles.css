@@ -112,11 +112,11 @@
     position: absolute;
     bottom: 0;
     right: 0;
-    width: 20px;
-    height: 20px;
+    width: 30px;
+    height: 30px;
     cursor: se-resize;
     background: linear-gradient(135deg, transparent 50%, #007bff 50%);
-    opacity: 0;
+    opacity: 0.7;
     transition: opacity 0.2s;
     pointer-events: auto;
     z-index: 101;
