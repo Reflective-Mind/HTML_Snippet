@@ -2,6 +2,19 @@
 
 A website builder that manages HTML snippets with admin capabilities.
 
+## Quick Start
+
+For the easiest setup, run the one-click setup script:
+```
+npm run setup
+```
+
+This will:
+1. Install all dependencies
+2. Ensure port 5000 is free
+3. Set up your environment file
+4. Optionally configure your GitHub repository
+
 ## Local Development
 
 ### Windows Users
@@ -17,23 +30,39 @@ A website builder that manages HTML snippets with admin capabilities.
 
 3. Start the development server using one of these methods:
    
-   **Option 1**: Use the Windows batch file:
+   **Option 1 (Recommended)**: Use the Windows batch file:
    ```
-   start-windows.bat
+   npm run start-win
    ```
    
-   **Option 2**: Use the Windows-compatible npm script:
+   **Option 2**: Use the development batch file with auto-reload:
    ```
    npm run dev-win
    ```
    
-   **Option 3**: Run the commands separately:
+   **Option 3**: Run the batch files directly:
+   ```
+   start-windows.bat
+   ```
+   or
+   ```
+   dev-windows.bat
+   ```
+   
+   **Option 4**: Run the commands separately:
    ```
    node kill-port.js
    nodemon server.js
    ```
 
-4. Open [http://localhost:5000](http://localhost:5000) to view the application in your browser.
+4. If you're having port issues, you can kill processes on port 5000:
+   ```
+   npm run kill-port
+   ```
+
+5. For PowerShell users who encounter issues with the `&&` operator, refer to the `powershell-commands.md` file for compatible commands.
+
+6. Open [http://localhost:5000](http://localhost:5000) to view the application in your browser.
 
 ### Mac/Linux Users
 
@@ -177,4 +206,20 @@ nodemon server.js
 
 ## Support
 
-For any questions or issues, please contact the repository owner. 
+For any questions or issues, please contact the repository owner.
+
+## GitHub Integration
+
+To push your code to GitHub:
+
+1. Set up the GitHub repository:
+   ```
+   npm run setup-github
+   ```
+   This will guide you through initializing a repository and configuring the remote.
+
+2. Push changes to GitHub:
+   ```
+   npm run push-github
+   ```
+   This will add your changes, prompt for a commit message, and push to GitHub. 
