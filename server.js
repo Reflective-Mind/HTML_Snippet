@@ -85,6 +85,7 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use('/api/login', limiter); // Apply stricter limits only to login
 app.use('/api/', apiLimiter); // Apply regular limits to other API routes
 app.use(express.static('public'));
+app.use(express.static('.'));  // Also serve files from root directory
 
 // Authentication middleware
 const authenticateUser = (req, res, next) => {
@@ -2347,6 +2348,11 @@ app.put('/api/messages/:messageId', authenticateUser, async (req, res) => {
         console.error('Error updating message:', error);
         res.status(500).json({ message: 'Internal server error' });
     }
+});
+
+// Make sure to add this at the end of your routes, just before starting the server
+app.get('*', (req, res) => {
+    res.sendFile('index.html', { root: './public' });
 });
 
 // Change app.listen to server.listen
