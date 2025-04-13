@@ -2,7 +2,7 @@
     "version": 2,
     "builds": [
         {
-            "src": "server.js",
+            "src": "api/index.js",
             "use": "@vercel/node"
         },
         {
@@ -13,7 +13,7 @@
     "routes": [
         {
             "src": "/api/(.*)",
-            "dest": "server.js"
+            "dest": "api/index.js"
         },
         {
             "src": "/(.*\\.(js|css|png|jpg|jpeg|gif|ico|html))",
@@ -24,7 +24,7 @@
         },
         {
             "src": "/(.*)",
-            "dest": "server.js"
+            "dest": "api/index.js"
         }
     ],
     "env": {
@@ -32,6 +32,7 @@
         "JWT_SECRET": "cd06a943f7e3a56b2f7c8836736c0d6f2e3b58f9c742a563",
         "MISTRAL_API_KEY": "pjTVzQVIZyYNzWj7mjm5aysVYippTADy",
         "NODE_ENV": "production",
-        "PORT": "10000"
+        "PORT": "10000",
+        "DB_NAME": "html-snippet-builder"
     }
 } 

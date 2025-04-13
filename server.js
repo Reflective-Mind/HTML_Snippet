@@ -87,6 +87,10 @@ app.use('/api/', apiLimiter); // Apply regular limits to other API routes
 app.use(express.static('public'));
 app.use(express.static('.'));  // Also serve files from root directory
 
+// Setup mongoose for serverless environments
+mongoose.set('bufferCommands', false); // Disable mongoose buffering
+mongoose.set('strictQuery', true); // Suppress strictQuery warning
+
 // Authentication middleware
 const authenticateUser = (req, res, next) => {
         const token = req.headers.authorization?.split(' ')[1];
@@ -2356,8 +2360,13 @@ app.get('*', (req, res) => {
     res.sendFile('index.html', { root: './public' });
 });
 
-// Change app.listen to server.listen
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-}); 
+// Export Express app for serverless environments (Vercel)
+module.exports = app;
+
+// Start server only in non-serverless environments
+if (process.env.NODE_ENV !== 'vercel') {
+    const PORT = process.env.PORT || 3000;
+    server.listen(PORT, () => {
+        console.log(`Server running on port ${PORT}`);
+    });
+} 
