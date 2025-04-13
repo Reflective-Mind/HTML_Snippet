@@ -9,6 +9,7 @@ const axios = require('axios');
 const { Server } = require('socket.io');
 const http = require('http');
 const path = require('path');
+const fs = require('fs');
 
 dotenv.config();
 
@@ -178,47 +179,28 @@ app.get('/', (req, res) => {
 
 // Add a dedicated app route
 app.get('/app', (req, res) => {
-    console.log('App route accessed, redirecting to login');
-    
-    // Simple HTML for the app page that will load the main app
-    res.send(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>HTML Snippet Builder - App</title>
-            <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-            <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-            <script src="/app.js" defer></script>
-            <link href="/styles.css" rel="stylesheet">
-        </head>
-        <body>
-            <div id="app">
-                <div id="login-form" class="container mt-5">
-                    <div class="row justify-content-center">
-                        <div class="col-md-6">
-                            <div class="card">
-                                <div class="card-body">
-                                    <h2 class="text-center mb-4">Login</h2>
-                                    <form id="loginForm">
-                                        <div class="mb-3">
-                                            <input type="email" class="form-control" id="email" placeholder="Email" required>
-                                        </div>
-                                        <div class="mb-3">
-                                            <input type="password" class="form-control" id="password" placeholder="Password" required>
-                                        </div>
-                                        <div class="d-grid">
-                                            <button type="submit" class="btn btn-primary">Login</button>
-                                        </div>
-                                    </form>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </body>
-        </html>
-    `);
+    try {
+        console.log('App route accessed, serving app-complete.html');
+        const filePath = path.join(__dirname, 'public', 'app-complete.html');
+        
+        // Check if file exists first
+        if (fs.existsSync(filePath)) {
+            res.sendFile(filePath, err => {
+                if (err) {
+                    console.error('Error serving app-complete.html:', err);
+                    res.status(500).send('Error loading application');
+                } else {
+                    console.log('Successfully served app-complete.html');
+                }
+            });
+        } else {
+            console.error('app-complete.html file not found at path:', filePath);
+            res.status(404).send('Application file not found');
+        }
+    } catch (error) {
+        console.error('Error in /app route:', error);
+        res.status(500).send('Error loading application');
+    }
 });
 
 // MongoDB connection with better error handling and monitoring
@@ -798,277 +780,144 @@ app.post('/api/register', async (req, res) => {
     }
 });
 
-// Update pages endpoint to handle both public and authenticated access
+// Get all pages
 app.get('/api/pages', async (req, res) => {
-    try {
-        const token = req.headers.authorization?.split(' ')[1];
-        let isAuthenticated = false;
-        let userRole = 'public';
-        
-        if (token) {
-            try {
-                const decoded = jwt.verify(token, process.env.JWT_SECRET);
-                isAuthenticated = true;
-                userRole = decoded.role;
-    } catch (error) {
-                console.warn('Invalid token in pages request:', error);
-    }
-        }
-
-        let pages = await Page.find().lean();
-        
-        // If no pages exist, create home page
-        if (!pages || pages.length === 0) {
-            const homePage = new Page({
-                id: 'home',
-                name: 'Home',
-                snippets: [{
-                    id: 1,
-                    html: '<div class="welcome-message"><h1>Welcome</h1><p>This is your home page.</p></div>',
-                    position: { x: 100, y: 100 },
-                    size: { width: 400, height: 200 }
-                }],
-                navButtons: [],
-                isDefault: true,
-                isPublic: true
-            });
-            await homePage.save();
-            pages = [homePage];
-        }
-
-        // Filter and format pages based on access level
-        pages = pages.map(page => ({
-            ...page,
-            navButtons: page.navButtons || [],
-            isAccessible: isAuthenticated || page.isPublic
-        }));
-
-        // For public access, only return public pages
-        if (!isAuthenticated) {
-            pages = pages.filter(page => page.isPublic);
-        }
-
-        res.json(pages);
-    } catch (error) {
-        console.error('Error fetching pages:', error);
-        res.status(500).json({ message: 'Failed to fetch pages' });
-    }
+  try {
+    console.log('Fetching all pages');
+    const pages = await Page.find().sort({ order: 1 });
+    console.log(`Returning ${pages.length} pages`);
+    res.json(pages);
+  } catch (error) {
+    console.error('Error fetching pages:', error);
+    res.status(500).json({ message: 'Failed to fetch pages', error: error.message });
+  }
 });
 
-// Add endpoint to get user pages with authentication
-app.get('/api/user/pages', authenticateUser, async (req, res, next) => {
-    try {
-        monitoring.trackApiCall();
-        const pages = await Page.find().lean();
-        res.json(pages);
-    } catch (error) {
-        monitoring.trackError(error);
-        next(error);
+// Get page by ID
+app.get('/api/pages/:id', async (req, res) => {
+  try {
+    const pageId = req.params.id;
+    console.log('Fetching page:', pageId);
+    
+    const page = await Page.findOne({ id: pageId });
+    if (!page) {
+      console.log('Page not found:', pageId);
+      return res.status(404).json({ message: 'Page not found' });
     }
+    
+    // Add some additional summary info about the page
+    const pageInfo = page.toObject();
+    pageInfo.snippetCount = page.snippets ? page.snippets.length : 0;
+    pageInfo.navButtonCount = page.navButtons ? page.navButtons.length : 0;
+    
+    console.log('Returning page:', { 
+      id: pageInfo.id, 
+      name: pageInfo.name, 
+      snippetCount: pageInfo.snippetCount,
+      navButtonCount: pageInfo.navButtonCount 
+    });
+    
+    res.json(pageInfo);
+  } catch (error) {
+    console.error('Error fetching page:', error);
+    res.status(500).json({ message: 'Failed to fetch page', error: error.message });
+  }
 });
 
-app.get('/api/pages/:id', async (req, res, next) => {
-    try {
-        console.log('Fetching page:', req.params.id);
-        let page = await Page.findOne({ id: req.params.id }).lean();
-        
-        // If requesting home page and it doesn't exist, create it
-        if (!page && req.params.id === 'home') {
-            console.log('Home page not found, creating it');
-            const newPage = new Page({
-                id: 'home',
-                name: 'Home',
-                snippets: [{
-                    id: 1,
-                    html: '<div class="welcome-message" style="text-align: center; padding: 20px;"><h1>Welcome to Your Page</h1><p>This is your default home page. Log in as admin to customize it.</p></div>',
-                    position: { x: 100, y: 100 },
-                    size: { width: 400, height: 200 }
-                }],
-                navButtons: [],
-                isDefault: true,
-                created: new Date(),
-                updated: new Date()
-            });
-            await newPage.save();
-            page = newPage.toObject();
-            console.log('Created new home page:', page);
-        }
-
-        if (!page) {
-            console.log('Page not found:', req.params.id);
-            return res.status(404).json({ message: 'Page not found' });
-        }
-
-        // Ensure navButtons array exists
-        page.navButtons = page.navButtons || [];
-        page.snippets = page.snippets || [];
-
-        console.log('Returning page:', {
-            id: page.id,
-            name: page.name,
-            snippetCount: page.snippets.length,
-            navButtonCount: page.navButtons.length
-        });
-        
-        res.json(page);
-    } catch (error) {
-        console.error('Error retrieving page:', error);
-        monitoring.trackError(error);
-        next(error);
+// Create new page
+app.post('/api/pages', authenticateAdmin, async (req, res) => {
+  try {
+    const { id, name } = req.body;
+    console.log('📝 Creating new page:', { id, name });
+    
+    if (!id || !name) {
+      return res.status(400).json({ message: 'Page ID and name are required' });
     }
+    
+    const existingPage = await Page.findOne({ id });
+    if (existingPage) {
+      return res.status(409).json({ message: 'Page ID already exists' });
+    }
+    
+    const newPage = new Page({
+      id,
+      name,
+      snippets: [],
+      navButtons: [],
+      createdBy: req.user.id,
+      isDefault: false
+    });
+    
+    await newPage.save();
+    console.log('✅ Page created successfully:', { id, name });
+    res.status(201).json(newPage);
+  } catch (error) {
+    console.error('Error creating page:', error);
+    res.status(500).json({ message: 'Failed to create page', error: error.message });
+  }
 });
 
-app.post('/api/pages', authenticateAdmin, async (req, res, next) => {
-    try {
-        monitoring.trackApiCall();
-        const { id, name, snippets } = req.body;
-
-        console.log('📝 Creating new page:', { id, name });
-
-        // Check if page with this ID already exists
-        const existingPage = await Page.findOne({ id });
-        if (existingPage) {
-            console.log('❌ Page creation failed: ID already exists:', id);
-            return res.status(400).json({ message: 'Page with this ID already exists' });
-        }
-
-        // Create the page with default values for arrays
-        const page = new Page({
-            id,
-            name,
-            snippets: snippets || [],
-            navButtons: [],
-            created: new Date(),
-            updated: new Date()
-        });
-
-        await page.save();
-        console.log('✅ Page created successfully:', { id, name });
-        
-        // Return the complete page object
-        const savedPage = await Page.findOne({ id }).lean();
-        if (!savedPage) {
-            throw new Error('Failed to verify page creation');
-        }
-
-        // Ensure arrays exist in response
-        savedPage.snippets = savedPage.snippets || [];
-        savedPage.navButtons = savedPage.navButtons || [];
-
-        res.status(201).json(savedPage);
-    } catch (error) {
-        console.error('❌ Error creating page:', error);
-        monitoring.trackError(error);
-        if (error.name === 'ValidationError') {
-            res.status(400).json({ message: error.message });
-        } else {
-            next(error);
-        }
+// Update page
+app.put('/api/pages/:id', authenticateAdmin, async (req, res) => {
+  try {
+    const pageId = req.params.id;
+    console.log('Updating page:', pageId);
+    
+    const page = await Page.findOne({ id: pageId });
+    if (!page) {
+      return res.status(404).json({ message: 'Page not found' });
     }
+    
+    // Only allow certain fields to be updated
+    const updates = {};
+    const allowedFields = ['name', 'isDefault', 'snippets', 'navButtons'];
+    
+    Object.keys(req.body).forEach(key => {
+      if (allowedFields.includes(key)) {
+        updates[key] = req.body[key];
+      }
+    });
+    
+    console.log('Applying updates:', Object.keys(updates));
+    
+    const updatedPage = await Page.findOneAndUpdate(
+      { id: pageId },
+      { $set: updates },
+      { new: true }
+    );
+    
+    console.log('✅ Page updated successfully');
+    res.json(updatedPage);
+  } catch (error) {
+    console.error('Error updating page:', error);
+    res.status(500).json({ message: 'Failed to update page', error: error.message });
+  }
 });
 
-app.put('/api/pages/:id', authenticateAdmin, async (req, res, next) => {
-    try {
-        monitoring.trackApiCall();
-        const { snippets, name, navButtons, isDefault } = req.body;
-        
-        console.log('📝 Updating page:', req.params.id, { name, navButtonCount: navButtons?.length });
-
-        // Find page and handle not found
-        const page = await Page.findOne({ id: req.params.id });
-        if (!page) {
-            console.log('❌ Page update failed: Page not found:', req.params.id);
-            return res.status(404).json({ message: 'Page not found' });
-        }
-
-        // Validate navigation buttons if provided
-        if (navButtons) {
-            console.log('🔄 Processing navigation buttons for page:', req.params.id);
-            const allPages = await Page.find().select('id');
-            const validPageIds = allPages.map(p => p.id);
-            
-            // Ensure all target pages exist
-            const invalidTargets = navButtons.filter(btn => !validPageIds.includes(btn.targetPage));
-            if (invalidTargets.length > 0) {
-                console.log('❌ Invalid button targets:', invalidTargets.map(btn => btn.targetPage));
-                return res.status(400).json({ 
-                    message: `Invalid target pages: ${invalidTargets.map(btn => btn.targetPage).join(', ')}` 
-                });
-            }
-
-            // Ensure all buttons have required fields
-            const invalidButtons = navButtons.filter(btn => !btn.id || !btn.targetPage || !btn.text);
-            if (invalidButtons.length > 0) {
-                console.log('❌ Invalid button data:', invalidButtons);
-                return res.status(400).json({ 
-                    message: 'All navigation buttons must have id, targetPage, and text' 
-                });
-            }
-
-            // Update navigation buttons
-            page.navButtons = navButtons.map(btn => ({
-                id: btn.id,
-                targetPage: btn.targetPage,
-                text: btn.text,
-                style: btn.style || 'btn-primary',
-                position: {
-                    x: btn.position?.x || 0,
-                    y: btn.position?.y || 0
-                }
-            }));
-            console.log('✅ Navigation buttons updated:', page.navButtons.length, 'buttons');
-        }
-
-        // Update other fields
-        if (name) page.name = name;
-        if (snippets) page.snippets = snippets;
-        if (typeof isDefault === 'boolean' && isDefault) {
-            await Page.updateMany({ _id: { $ne: page._id } }, { isDefault: false });
-            page.isDefault = true;
-            console.log('✅ Page set as default:', req.params.id);
-        }
-
-        page.updated = new Date();
-        await page.save();
-
-        // Verify update
-        const updatedPage = await Page.findOne({ id: req.params.id });
-        console.log('✅ Page update verified in database:', {
-            id: updatedPage.id,
-            name: updatedPage.name,
-            navButtonCount: updatedPage.navButtons?.length
-        });
-
-        res.json(page);
-    } catch (error) {
-        console.error('❌ Error updating page:', error);
-        monitoring.trackError(error);
-        if (error.name === 'ValidationError') {
-            res.status(400).json({ message: error.message });
-        } else {
-            next(error);
-        }
+// Delete page
+app.delete('/api/pages/:id', authenticateAdmin, async (req, res) => {
+  try {
+    const pageId = req.params.id;
+    
+    // Don't allow deletion of home page
+    if (pageId === 'home') {
+      return res.status(400).json({ message: 'Cannot delete the home page' });
     }
-});
-
-app.delete('/api/pages/:id', authenticateAdmin, async (req, res, next) => {
-    try {
-        monitoring.trackApiCall();
-        
-        // Prevent deletion of home page
-        if (req.params.id === 'home') {
-            return res.status(400).json({ message: 'Cannot delete home page' });
-        }
-
-        const page = await Page.findOneAndDelete({ id: req.params.id });
-        if (!page) {
-            return res.status(404).json({ message: 'Page not found' });
-        }
-        res.json({ message: 'Page deleted successfully' });
-    } catch (error) {
-        monitoring.trackError(error);
-        next(error);
+    
+    console.log('Deleting page:', pageId);
+    
+    const result = await Page.deleteOne({ id: pageId });
+    
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ message: 'Page not found' });
     }
+    
+    console.log('✅ Page deleted successfully');
+    res.json({ message: 'Page deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting page:', error);
+    res.status(500).json({ message: 'Failed to delete page', error: error.message });
+  }
 });
 
 // Add endpoint to set default page
@@ -2381,30 +2230,62 @@ app.put('/api/messages/:messageId', authenticateUser, async (req, res) => {
 });
 
 // Make sure this is at the end of all your route definitions, just before starting the server
+app.get('/api/admin', authenticateAdmin, async (req, res) => {
+    try {
+        console.log('Admin dashboard request received');
+        
+        // Fetch admin dashboard data
+        const users = await User.countDocuments();
+        const pages = await Page.countDocuments();
+        const settings = await Settings.countDocuments();
+        
+        const stats = {
+            users,
+            pages,
+            settings
+        };
+        
+        console.log('Returning admin stats:', stats);
+        
+        // Return admin dashboard data
+        res.json({
+            stats,
+            user: {
+                email: req.user.email,
+                role: req.user.role,
+                username: req.user.username
+            },
+            message: 'Admin dashboard data loaded successfully',
+            serverTime: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('Error fetching admin dashboard:', error);
+        res.status(500).json({ message: 'Failed to load admin dashboard', error: error.message });
+    }
+});
+
+// Make sure this is at the end of all your route definitions, just before starting the server
 app.get('*', (req, res) => {
     console.log('Fallback route hit:', req.url);
     res.sendFile('index.html', { root: './public' });
 });
 
-// Export Express app for serverless environments (Vercel)
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Export the Express app for serverless environments (like Vercel)
 module.exports = app;
 
-// Start server only in non-serverless environments
+// Start the server if we're not in a serverless environment
 if (process.env.NODE_ENV !== 'vercel') {
-    const PORT = process.env.PORT || 3000;
-    server.listen(PORT, () => {
-        console.log(`Server running on port ${PORT}`);
-    });
-} 
-
-// Add a simple health endpoint
-app.get('/api/health', (req, res) => {
-    const health = {
-        status: 'ok',
-        uptime: process.uptime(),
-        timestamp: new Date().toISOString(),
-        mongo: mongoose.connection.readyState
-    };
-    
-    res.json(health);
-}); 
+  const PORT = process.env.PORT || 5000;
+  server.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+}

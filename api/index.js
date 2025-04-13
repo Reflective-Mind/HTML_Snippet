@@ -14,11 +14,17 @@ app.use(express.urlencoded({ extended: true }));
 // Tell Vercel we're in a serverless environment
 process.env.NODE_ENV = 'vercel';
 
+// The main Render API URL
+const RENDER_API_URL = 'https://mbti-render.onrender.com';
+
 // Add simple routes
-app.get('/api/health-check', (req, res) => {
+app.get('/api/health', (req, res) => {
   res.status(200).json({
     status: 'ok',
-    environment: process.env.NODE_ENV
+    environment: process.env.NODE_ENV,
+    timestamp: new Date().toISOString(),
+    service: 'Vercel Serverless API',
+    renderApiUrl: RENDER_API_URL
   });
 });
 
@@ -27,19 +33,42 @@ app.get('/', (req, res) => {
   res.json({
     message: "Welcome to HTML Snippet Builder API",
     status: "active",
-    mainUrl: "https://html-snippet-builder-backend.onrender.com",
-    info: "This Vercel deployment is a mirror of the main application running on Render."
+    mainApiUrl: RENDER_API_URL,
+    frontendUrl: req.headers.host,
+    info: "This Vercel deployment is a frontend mirror of the main application running on Render.",
+    endpoints: {
+      api: `${RENDER_API_URL}/api`,
+      health: `${RENDER_API_URL}/api/health`,
+      app: `${RENDER_API_URL}/app`
+    }
   });
 });
 
-// Add a redirect to the main app
-app.get('/app', (req, res) => {
-  res.redirect('https://html-snippet-builder-backend.onrender.com');
+// API proxy for simple endpoints
+app.get('/api/stats', async (req, res) => {
+  try {
+    const response = await fetch(`${RENDER_API_URL}/api/stats`);
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to fetch stats from Render API',
+      message: error.message
+    });
+  }
 });
 
-// Redirect all other routes to the main application
-app.all('*', (req, res) => {
-  res.redirect('https://html-snippet-builder-backend.onrender.com');
+// Handle the app route - serve the local index.html with proper env vars
+app.get('/app', (req, res) => {
+  // You can either redirect to Render or serve your local app
+  // For now, we'll redirect to the Render app
+  res.redirect(`${RENDER_API_URL}/app`);
+});
+
+// Redirect API routes to Render
+app.all('/api/*', (req, res) => {
+  const targetUrl = `${RENDER_API_URL}${req.url}`;
+  res.redirect(targetUrl);
 });
 
 // Error handling middleware
@@ -47,7 +76,8 @@ app.use((err, req, res, next) => {
   console.error('Vercel Error:', err);
   res.status(500).json({
     message: 'Internal Server Error',
-    error: err.message
+    error: err.message,
+    renderApiUrl: RENDER_API_URL
   });
 });
 

@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>HTML Snippet Builder - App</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" rel="stylesheet">
+    <link href="/styles.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+</head>
+<body>
+    <div id="app">
+        <!-- Login Form -->
+        <div id="login-form-container" class="container mt-5">
+            <div class="row justify-content-center">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-body">
+                            <h2 class="text-center mb-4">Login</h2>
+                            <form id="loginForm">
+                                <div class="mb-3">
+                                    <input type="email" class="form-control" id="email" placeholder="Email" required>
+                                </div>
+                                <div class="mb-3">
+                                    <input type="password" class="form-control" id="password" placeholder="Password" required>
+                                </div>
+                                <div class="d-grid mb-3">
+                                    <button type="submit" class="btn btn-primary">Login</button>
+                                </div>
+                                <div class="text-center">
+                                    <a href="#" onclick="toggleRegister(); return false;">Don't have an account? Register</a>
+                                </div>
+                            </form>
+                            
+                            <form id="registerForm" style="display: none;">
+                                <h2 class="text-center mb-4">Register</h2>
+                                <div class="mb-3">
+                                    <input type="email" class="form-control" id="regEmail" placeholder="Email" required>
+                                </div>
+                                <div class="mb-3">
+                                    <input type="text" class="form-control" id="regUsername" placeholder="Username" required>
+                                </div>
+                                <div class="mb-3">
+                                    <input type="password" class="form-control" id="regPassword" placeholder="Password" required>
+                                </div>
+                                <div class="mb-3">
+                                    <input type="password" class="form-control" id="confirmPassword" placeholder="Confirm Password" required>
+                                </div>
+                                <div class="d-grid mb-3">
+                                    <button type="submit" class="btn btn-success">Register</button>
+                                </div>
+                                <div class="text-center">
+                                    <a href="#" onclick="toggleRegister(); return false;">Already have an account? Login</a>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Admin Panel -->
+        <div id="admin-panel" style="display: none;">
+            <!-- Admin Toolbar -->
+            <nav id="admin-toolbar" class="navbar navbar-expand-lg navbar-dark bg-dark">
+                <div class="container-fluid">
+                    <a class="navbar-brand" href="#">HTML Snippet Builder</a>
+                    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#adminNav">
+                        <span class="navbar-toggler-icon"></span>
+                    </button>
+                    <div class="collapse navbar-collapse" id="adminNav">
+                        <ul class="navbar-nav me-auto">
+                            <li class="nav-item">
+                                <button id="add-page-btn" class="btn btn-success btn-sm mx-1">Add Page</button>
+                            </li>
+                            <li class="nav-item">
+                                <button id="add-snippet-btn" class="btn btn-primary btn-sm mx-1">Add Snippet</button>
+                            </li>
+                            <li class="nav-item">
+                                <button id="add-nav-btn" class="btn btn-warning btn-sm mx-1">Add Nav Button</button>
+                            </li>
+                            <li class="nav-item">
+                                <button id="preview-toggle-btn" class="btn btn-secondary btn-sm mx-1">Preview Mode</button>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <button class="btn btn-info btn-sm dropdown-toggle mx-1" data-bs-toggle="dropdown">
+                                    Admin
+                                </button>
+                                <ul class="dropdown-menu">
+                                    <li><a class="dropdown-item" href="#" id="settings-btn">Settings</a></li>
+                                    <li><a class="dropdown-item" href="#" id="users-btn">Users</a></li>
+                                    <li><a class="dropdown-item" href="#" id="channels-btn">Chat Channels</a></li>
+                                    <li><hr class="dropdown-divider"></li>
+                                    <li><a class="dropdown-item" href="#" id="renamePageBtn">Rename Page</a></li>
+                                    <li><a class="dropdown-item" href="#" id="deletePageBtn">Delete Page</a></li>
+                                </ul>
+                            </li>
+                        </ul>
+                        <div id="pages-nav" class="navbar-nav mx-auto">
+                            <!-- Page navigation links will be inserted here -->
+                        </div>
+                        <div class="navbar-nav">
+                            <button id="logout-btn" class="btn btn-outline-light btn-sm">Logout</button>
+                        </div>
+                    </div>
+                </div>
+            </nav>
+            
+            <!-- Content Area -->
+            <div id="content" class="content-area container-fluid mt-4">
+                <!-- Page content will be inserted here -->
+            </div>
+        </div>
+        
+        <!-- Public View (for non-admin users) -->
+        <div id="public-view" style="display: none;">
+            <nav class="navbar navbar-expand-lg navbar-light bg-light">
+                <div class="container">
+                    <a class="navbar-brand" href="#">HTML Snippet Builder</a>
+                    <button id="public-logout-btn" class="btn btn-outline-secondary btn-sm">Logout</button>
+                </div>
+            </nav>
+            <div id="public-content" class="container mt-4">
+                <!-- Public page content will be inserted here -->
+            </div>
+        </div>
+        
+        <!-- Alert Container -->
+        <div id="alert-container" style="position: fixed; top: 20px; right: 20px; z-index: 9999;"></div>
+    </div>
+
+    <script>
+        // These functions need to be defined before loading app.js
+        // Global state
+        window.isPreviewMode = false;
+        
+        // Initialize global functions for the page
+        window.navigateToPage = function(pageId) {
+            console.log('Page navigation stub called for:', pageId);
+        };
+        
+        window.togglePreviewMode = function() {
+            console.log('Toggle preview mode stub called');
+        };
+        
+        window.showAlert = function(message, type) {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+            alertDiv.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            `;
+            
+            const container = document.getElementById('alert-container');
+            if (container) {
+                container.appendChild(alertDiv);
+                setTimeout(() => {
+                    alertDiv.classList.remove('show');
+                    setTimeout(() => alertDiv.remove(), 300);
+                }, 3000);
+            } else {
+                alert(message);
+            }
+        };
+        
+        // Stub for toggleRegister
+        window.toggleRegister = function() {
+            console.log('Toggle register stub called');
+            const loginForm = document.getElementById('loginForm');
+            const registerForm = document.getElementById('registerForm');
+            
+            if (loginForm && registerForm) {
+                if (loginForm.style.display === 'none') {
+                    loginForm.style.display = 'block';
+                    registerForm.style.display = 'none';
+                } else {
+                    loginForm.style.display = 'none';
+                    registerForm.style.display = 'block';
+                }
+            }
+        };
+    </script>
+    
+    <!-- Load app.js after defining stubs -->
+    <script src="/app.js"></script>
+    
+    <script>
+        // Initialize the application when the DOM is loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM fully loaded and parsed');
+            
+            // Element references - use document.getElementById for safety
+            window.loginFormContainer = document.getElementById('login-form-container');
+            window.adminPanel = document.getElementById('admin-panel');
+            window.adminToolbar = document.getElementById('admin-toolbar');
+            window.publicView = document.getElementById('public-view');
+            window.pagesNav = document.getElementById('pages-nav');
+            window.content = document.getElementById('content');
+            window.publicContent = document.getElementById('public-content');
+            
+            // Log initialization state for debugging
+            console.log('Element initialization:',
+                'loginFormContainer:', !!window.loginFormContainer,
+                'adminPanel:', !!window.adminPanel,
+                'publicView:', !!window.publicView,
+                'content:', !!window.content,
+                'publicContent:', !!window.publicContent
+            );
+            
+            // Initialize error handling for missing elements
+            if (!window.content && window.adminPanel) {
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'alert alert-danger';
+                errorDiv.innerHTML = 'Error: Content area not found. Application may not function correctly.';
+                window.adminPanel.prepend(errorDiv);
+            }
+            
+            if (!window.publicContent && window.publicView) {
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'alert alert-danger';
+                errorDiv.innerHTML = 'Error: Public content area not found. Application may not function correctly.';
+                window.publicView.prepend(errorDiv);
+            }
+            
+            // Form references
+            const loginForm = document.getElementById('loginForm');
+            const registerForm = document.getElementById('registerForm');
+            
+            // Button references
+            const logoutBtn = document.getElementById('logout-btn');
+            const publicLogoutBtn = document.getElementById('public-logout-btn');
+            const addPageBtn = document.getElementById('add-page-btn');
+            const addSnippetBtn = document.getElementById('add-snippet-btn');
+            const addNavBtn = document.getElementById('add-nav-btn');
+            const previewToggleBtn = document.getElementById('preview-toggle-btn');
+            const settingsBtn = document.getElementById('settings-btn');
+            const renamePageBtn = document.getElementById('renamePageBtn');
+            const deletePageBtn = document.getElementById('deletePageBtn');
+            
+            // Initialize application
+            if (typeof updateView === 'function') {
+                console.log('Calling updateView()');
+                try {
+                    updateView();
+                } catch (error) {
+                    console.error('Error in updateView:', error);
+                    showAlert('Application initialization error: ' + error.message, 'danger');
+                }
+            } else {
+                console.error('updateView function not found!');
+                showAlert('Application initialization error: updateView function not found', 'danger');
+            }
+            
+            // Form event listeners
+            if (loginForm) {
+                loginForm.addEventListener('submit', async function(e) {
+                    e.preventDefault();
+                    const email = document.getElementById('email').value.trim();
+                    const password = document.getElementById('password').value;
+                    if (typeof login === 'function') {
+                        await login(email, password);
+                    } else {
+                        console.error('login function not found!');
+                    }
+                });
+            }
+            
+            if (registerForm) {
+                registerForm.addEventListener('submit', async function(e) {
+                    e.preventDefault();
+                    const email = document.getElementById('regEmail').value.trim();
+                    const username = document.getElementById('regUsername').value.trim();
+                    const password = document.getElementById('regPassword').value;
+                    const confirmPassword = document.getElementById('confirmPassword').value;
+                    
+                    if (password !== confirmPassword) {
+                        if (typeof showAlert === 'function') {
+                            showAlert('Passwords do not match', 'danger');
+                        } else {
+                            alert('Passwords do not match');
+                        }
+                        return;
+                    }
+                    
+                    if (typeof register === 'function') {
+                        await register(email, password, username);
+                    } else {
+                        console.error('register function not found!');
+                    }
+                });
+            }
+            
+            // Button event listeners
+            if (logoutBtn) {
+                logoutBtn.addEventListener('click', function() {
+                    if (typeof logout === 'function') {
+                        logout();
+                    } else {
+                        console.error('logout function not found!');
+                    }
+                });
+            }
+            
+            if (publicLogoutBtn) {
+                publicLogoutBtn.addEventListener('click', function() {
+                    if (typeof logout === 'function') {
+                        logout();
+                    } else {
+                        console.error('logout function not found!');
+                    }
+                });
+            }
+            
+            if (addPageBtn) {
+                addPageBtn.addEventListener('click', function() {
+                    if (typeof showCreatePageModal === 'function') {
+                        showCreatePageModal();
+                    } else {
+                        console.error('showCreatePageModal function not found!');
+                    }
+                });
+            }
+            
+            if (addSnippetBtn) {
+                addSnippetBtn.addEventListener('click', function() {
+                    const html = prompt('Enter HTML snippet:');
+                    if (html && typeof addSnippet === 'function') {
+                        addSnippet(html);
+                    } else if (!typeof addSnippet === 'function') {
+                        console.error('addSnippet function not found!');
+                    }
+                });
+            }
+            
+            if (addNavBtn) {
+                addNavBtn.addEventListener('click', function() {
+                    if (typeof showAddButtonForm === 'function') {
+                        showAddButtonForm();
+                    } else {
+                        console.error('showAddButtonForm function not found!');
+                    }
+                });
+            }
+            
+            if (previewToggleBtn) {
+                previewToggleBtn.addEventListener('click', function() {
+                    if (typeof togglePreviewMode === 'function') {
+                        togglePreviewMode();
+                    } else {
+                        console.error('togglePreviewMode function not found!');
+                    }
+                });
+            }
+            
+            if (settingsBtn) {
+                settingsBtn.addEventListener('click', function() {
+                    if (typeof showSettingsModal === 'function') {
+                        showSettingsModal();
+                    } else {
+                        console.error('showSettingsModal function not found!');
+                    }
+                });
+            }
+            
+            if (renamePageBtn) {
+                renamePageBtn.addEventListener('click', function() {
+                    if (typeof renamePage === 'function') {
+                        renamePage();
+                    } else {
+                        console.error('renamePage function not found!');
+                    }
+                });
+            }
+            
+            if (deletePageBtn) {
+                deletePageBtn.addEventListener('click', function() {
+                    if (typeof deletePage === 'function') {
+                        deletePage();
+                    } else {
+                        console.error('deletePage function not found!');
+                    }
+                });
+            }
+            
+            console.log('App initialized successfully');
+        });
+    </script>
+</body>
+</html> 

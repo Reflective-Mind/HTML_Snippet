@@ -4,6 +4,39 @@ A website builder that manages HTML snippets with admin capabilities.
 
 ## Local Development
 
+### Windows Users
+
+1. Install dependencies:
+   ```
+   npm install
+   ```
+
+2. Set up your environment variables:
+   - Copy `.env.example` to `.env`
+   - Fill in your MongoDB connection string and other required variables
+
+3. Start the development server using one of these methods:
+   
+   **Option 1**: Use the Windows batch file:
+   ```
+   start-windows.bat
+   ```
+   
+   **Option 2**: Use the Windows-compatible npm script:
+   ```
+   npm run dev-win
+   ```
+   
+   **Option 3**: Run the commands separately:
+   ```
+   node kill-port.js
+   nodemon server.js
+   ```
+
+4. Open [http://localhost:5000](http://localhost:5000) to view the application in your browser.
+
+### Mac/Linux Users
+
 1. Install dependencies:
    ```
    npm install
@@ -17,8 +50,13 @@ A website builder that manages HTML snippets with admin capabilities.
    ```
    npm run dev
    ```
+   
+   Or clean start:
+   ```
+   npm run dev-clean
+   ```
 
-4. Open [http://localhost:10000](http://localhost:10000) to view the application in your browser.
+4. Open [http://localhost:5000](http://localhost:5000) to view the application in your browser.
 
 ## Deployment Options
 
@@ -30,13 +68,24 @@ A website builder that manages HTML snippets with admin capabilities.
 
 3. Click on "Import Project" and select your GitHub repository.
 
-4. Configure your environment variables in the Vercel dashboard.
+4. Configure your environment variables in the Vercel dashboard:
+   - `REACT_APP_API_URL`: https://mbti-render.onrender.com
+   - `REACT_APP_SOCKET_URL`: https://mbti-render.onrender.com
+   - `CHAT_SOCKET_URL`: https://mbti-render.onrender.com
+   - `CHAT_API_URL`: https://mbti-render.onrender.com/api
+   - `REACT_APP_CHAT_API_URL`: https://mbti-render.onrender.com/api
+   - `NODE_ENV`: production
 
 5. Click "Deploy" and Vercel will build and deploy your application.
 
 6. Your application will be available at a URL like `https://your-project-name.vercel.app`.
 
 7. You can also deploy from the command line:
+   ```
+   npm run deploy:vercel
+   ```
+   
+   Or use the full commands:
    ```
    npm install -g vercel
    vercel login
@@ -52,16 +101,24 @@ A website builder that manages HTML snippets with admin capabilities.
 3. Click on "New Web Service" and connect your GitHub repository.
 
 4. Configure the service:
-   - Name: html-snippet-builder
+   - Name: mbti-render
    - Environment: Node.js
    - Build Command: `npm install`
-   - Start Command: `npm start`
+   - Start Command: `node server.js`
 
-5. Add your environment variables in the Render dashboard.
+5. Add your environment variables in the Render dashboard:
+   - `PORT`: 5000
+   - `MONGODB_URI`: Your MongoDB connection string
+   - `JWT_SECRET`: Your secret key for JWT
+   - `MISTRAL_API_KEY`: Your API key
+   - `NODE_ENV`: production
+   - `DB_NAME`: html-snippet-builder
 
-6. Click "Create Web Service" and Render will build and deploy your application.
+6. Alternatively, use the `render.yaml` file included in this repository for easy deployment.
 
-7. Your application will be available at a URL like `https://html-snippet-builder.onrender.com`.
+7. Click "Create Web Service" and Render will build and deploy your application.
+
+8. Your application will be available at the URL `https://mbti-render.onrender.com`.
 
 ## Features
 
@@ -71,45 +128,10 @@ A website builder that manages HTML snippets with admin capabilities.
 - Real-time updates with Socket.IO
 - MongoDB integration
 
-## Setup
+## Login Credentials
 
-1. Clone the repository:
-```bash
-git clone https://github.com/Reflective-Mind/Ken-Ultimate.git
-cd Ken-Ultimate
-```
-
-2. Install dependencies:
-```bash
-npm install
-```
-
-3. Create a `.env` file in the root directory with the following content:
-```
-PORT=10000
-MONGODB_URI=mongodb+srv://keneide91:3N6L1x0jeIhVX5wP@mbti-insights.s3vrf.mongodb.net/html-snippet-builder?retryWrites=true&w=majority&appName=mbti-insights
-JWT_SECRET=cd06a943f7e3a56b2f7c8836736c0d6f2e3b58f9c742a563
-MISTRAL_API_KEY=pjTVzQVIZyYNzWj7mjm5aysVYippTADy
-NODE_ENV=production
-```
-
-4. Start the server:
-```bash
-npm start
-```
-
-## Usage
-
-1. Access the website builder at `http://localhost:10000`
-2. Log in with the admin credentials:
-   - Email: eideken@hotmail.com
-   - Password: sword91
-3. Use the admin toolbar to:
-   - Add new pages
-   - Add HTML snippets
-   - Arrange snippets by dragging
-   - Resize snippets using the handle
-4. Your changes are automatically saved to the database
+- Email: eideken@hotmail.com
+- Password: sword91
 
 ## Adding HTML Snippets
 
@@ -119,24 +141,39 @@ npm start
 4. Drag it to position
 5. Resize as needed
 
-## Example Snippets
+## Troubleshooting
 
-### 3D Globe
-```html
-<!-- Paste the interactive-globe.html content here -->
+### Port Already in Use (Windows)
+
+If you see the error "listen EADDRINUSE: address already in use", try these solutions:
+
+1. Run the kill-port script:
+   ```
+   node kill-port.js
+   ```
+
+2. Use the Windows Task Manager to find and end any Node.js processes.
+
+3. Run this command in PowerShell to find and kill the process:
+   ```
+   netstat -ano | findstr :5000
+   taskkill /F /PID <PID>
+   ```
+
+### PowerShell "&" Operator Issues
+
+PowerShell doesn't support the `&&` operator like bash. Use the `dev-win` script or run commands separately:
+
+```
+npm run dev-win
 ```
 
-### Chat Room
-```html
-<!-- Your chat room HTML -->
+Or:
+
 ```
-
-## Security
-
-- Admin authentication is JWT-based
-- API keys are properly secured
-- MongoDB connection is encrypted
-- CORS is enabled for security
+node kill-port.js
+nodemon server.js
+```
 
 ## Support
 

@@ -1,124 +1,231 @@
 // State management
 let currentPage = localStorage.getItem('currentPage') || 'home';
-let token = localStorage.getItem('token');
-let userRole = localStorage.getItem('userRole');
-let isPreviewMode = false;
+let token = localStorage.getItem('token') || '';
+let userRole = localStorage.getItem('userRole') || '';
+let isPreviewMode = localStorage.getItem('isPreviewMode') === 'true';
 let isDragging = false;
 let isResizing = false;
 let updateTimeout = null;
 let navButtons = [];
 
-// DOM Elements
-const loginForm = document.getElementById('loginForm');
-const registerForm = document.getElementById('registerForm');
-const loginFormContainer = document.getElementById('login-form');
-const adminPanel = document.getElementById('admin-panel');
-const publicView = document.getElementById('public-view');
-const pagesNav = document.getElementById('pages-nav');
-const content = document.getElementById('content');
-const publicContent = document.getElementById('public-content');
-const adminToolbar = document.getElementById('admin-toolbar');
+// DOM Elements - these will be initialized when the DOM is loaded
+let loginForm;
+let registerForm;
+let loginFormContainer;
+let adminPanel;
+let publicView;
+let pagesNav;
+let content;
+let publicContent;
+let adminToolbar;
+
+// Initialize functionality after DOM is fully loaded
+document.addEventListener('DOMContentLoaded', () => {
+    console.log('DOM fully loaded and parsed');
+    
+    // Initialize variables from local storage
+    token = localStorage.getItem('token') || '';
+    userRole = localStorage.getItem('userRole') || '';
+    currentPage = localStorage.getItem('currentPage') || 'home';
+    
+    // Initialize preview mode state from localStorage
+    const storedPreviewMode = localStorage.getItem('isPreviewMode');
+    isPreviewMode = storedPreviewMode === 'true';
+    window.isPreviewMode = isPreviewMode;
+    
+    // Get DOM element references
+    loginFormContainer = document.getElementById('login-form-container');
+    adminPanel = document.getElementById('admin-panel');
+    publicView = document.getElementById('public-view');
+    adminToolbar = document.getElementById('admin-toolbar');
+    pagesNav = document.getElementById('pages-nav');
+    
+    // Initialize the view based on authentication
+    updateView();
+    
+    // Add event listeners to buttons
+    const addPageBtn = document.getElementById('add-page-btn');
+    if (addPageBtn) {
+        addPageBtn.addEventListener('click', showCreatePageModal);
+    }
+    
+    const addSnippetBtn = document.getElementById('add-snippet-btn');
+    if (addSnippetBtn) {
+        addSnippetBtn.addEventListener('click', () => {
+            const html = prompt('Enter HTML for the snippet:');
+            if (html) {
+                addSnippet(html);
+            }
+        });
+    }
+    
+    // Setup event listeners for the login form
+    const loginForm = document.getElementById('login-form');
+    if (loginForm) {
+        loginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            await login(email, password);
+        });
+    }
+    
+    // Setup drag and resize functionality
+    setupDragAndResize();
+});
 
 // Toggle between login and register forms
 function toggleRegister() {
+    console.log('Toggle register called');
     const loginForm = document.getElementById('loginForm');
     const registerForm = document.getElementById('registerForm');
+    
+    if (!loginForm || !registerForm) {
+        console.error('Login or register form not found');
+        return;
+    }
+    
+    console.log('Current visibility - Login:', loginForm.style.display, 'Register:', registerForm.style.display);
+    
     if (loginForm.style.display === 'none') {
         loginForm.style.display = 'block';
         registerForm.style.display = 'none';
+        console.log('Showing login form');
     } else {
         loginForm.style.display = 'none';
         registerForm.style.display = 'block';
+        console.log('Showing register form');
     }
 }
 
 // Show appropriate view based on authentication
 async function updateView() {
-    console.log('Updating view. Token:', !!token, 'Role:', userRole, 'Current Page:', currentPage);
-    
-    if (!token) {
-        try {
-            console.log('No token, attempting to load default page');
-            const response = await fetch('/api/pages');
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            
-            const pages = await response.json();
-            console.log('Available pages:', pages);
-            
-            const defaultPage = pages.find(p => p.isDefault) || pages.find(p => p.id === 'home') || pages[0];
-            console.log('Selected default page:', defaultPage);
-            
-            if (defaultPage) {
-                loginFormContainer.style.display = 'none';
-                adminPanel.style.display = 'none';
-                publicView.style.display = 'block';
-                adminToolbar.style.display = 'none';
-                
-                publicView.innerHTML = `
-                    <div class="text-end p-2">
-                        <button class="btn btn-outline-primary btn-sm" onclick="showLoginForm()">Login</button>
-                    </div>
-                    <div id="public-content"></div>
-                `;
-                
-                await loadPublicPage(defaultPage.id);
-            } else {
-                throw new Error('No pages available');
-            }
-        } catch (error) {
-            console.error('Error loading default page:', error);
-            loginFormContainer.style.display = 'block';
-            adminPanel.style.display = 'none';
-            publicView.style.display = 'none';
-            adminToolbar.style.display = 'none';
-            showAlert('Error loading page: ' + error.message, 'danger');
-        }
-        return;
-    }
+    try {
+        console.log('Updating view...');
 
-    loginFormContainer.style.display = 'none';
-    
-    // Show navigation buttons for all authenticated users
-    const isAdmin = userRole === 'admin';
-    const navButtons = await getNavigationButtons();
-    
-    if (isAdmin) {
-        adminPanel.style.display = 'block';
-        publicView.style.display = 'none';
-        adminToolbar.style.display = 'flex';
-        document.getElementById('addNavBtn').style.display = 'inline-block';
-        isPreviewMode = false;
-        await loadPages();
-        await loadPageContent(currentPage);
-    } else {
-        adminPanel.style.display = 'none';
-        publicView.style.display = 'block';
-        adminToolbar.style.display = 'none';
-        
-        publicView.innerHTML = `
-            <div class="bg-light p-2 d-flex justify-content-between align-items-center" style="position: fixed; top: 0; left: 0; right: 0; z-index: 1000; background: transparent !important;">
-                <div class="nav-buttons">
-                    ${navButtons}
-                </div>
-                <div class="d-flex align-items-center">
-                    <span class="me-3">Welcome, ${localStorage.getItem('username') || 'User'}</span>
-                    <button class="btn btn-danger btn-sm rounded-circle" style="width: 32px; height: 32px; padding: 0; margin: 8px;" onclick="logout()" title="Logout">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-            </div>
-            <div id="public-content" style="padding-top: 48px;"></div>
-        `;
-        
-        const pages = await makeRequest('/api/pages');
-        const defaultPage = pages.find(p => p.isDefault) || pages[0];
-        if (defaultPage) {
-            await loadPublicPage(defaultPage.id);
-        } else {
-            showAlert('No pages available', 'warning');
+        // Check for essential DOM elements
+        if (!document.getElementById('login-form-container')) {
+            console.error('Login form container not found');
+            showAlert('UI error: Login form container not found. Please refresh the page.', 'danger');
         }
+        
+        if (!document.getElementById('admin-panel')) {
+            console.error('Admin panel not found');
+            showAlert('UI error: Admin panel not found. Please refresh the page.', 'danger');
+        }
+        
+        if (!document.getElementById('public-view')) {
+            console.error('Public view not found');
+            showAlert('UI error: Public view not found. Please refresh the page.', 'danger');
+        }
+
+        // Check if we have a token in localStorage
+        token = localStorage.getItem('token');
+        userRole = localStorage.getItem('userRole');
+        
+        console.log('Authentication state:', {
+            hasToken: !!token,
+            userRole: userRole || 'none'
+        });
+
+        // Hide all views initially
+        if (loginFormContainer) loginFormContainer.style.display = 'none';
+        if (adminPanel) adminPanel.style.display = 'none';
+        if (publicView) publicView.style.display = 'none';
+
+        if (token) {
+            // We have a token, show the admin or public view based on role
+            if (userRole === 'admin') {
+                if (adminPanel) {
+                    adminPanel.style.display = 'block';
+                    
+                    // Load pages for navigation
+                    const pages = await loadPages();
+                    
+                    // Get current page from localStorage or use the first page
+                    const storedPage = localStorage.getItem('currentPage');
+                    const defaultPage = pages && pages.length > 0 ? 
+                        pages.find(p => p.isDefault) || pages[0] : null;
+                    
+                    const pageToLoad = storedPage || (defaultPage ? defaultPage.id : null);
+                    
+                    if (pageToLoad) {
+                        navigateToPage(pageToLoad);
+                    } else {
+                        console.error('No pages available');
+                        showAlert('No pages available. Please create a page.', 'warning');
+                    }
+                } else {
+                    console.error('Admin panel element not found');
+                    showAlert('UI error: Admin panel element not found', 'danger');
+                }
+            } else {
+                if (publicView) {
+                    publicView.style.display = 'block';
+                    
+                    // Load public view
+                    const pages = await loadPages();
+                    
+                    // Get current page from localStorage or use the first page
+                    const storedPage = localStorage.getItem('currentPage');
+                    const defaultPage = pages && pages.length > 0 ? 
+                        pages.find(p => p.isDefault) || pages[0] : null;
+                    
+                    const pageToLoad = storedPage || (defaultPage ? defaultPage.id : null);
+                    
+                    if (pageToLoad) {
+                        navigateToPage(pageToLoad);
+                    } else {
+                        console.error('No pages available');
+                        showAlert('No pages available.', 'warning');
+                    }
+                } else {
+                    console.error('Public view element not found');
+                    showAlert('UI error: Public view element not found', 'danger');
+                }
+            }
+        } else {
+            // No token, show login form
+            if (loginFormContainer) {
+                loginFormContainer.style.display = 'block';
+            } else {
+                console.error('Login form container element not found');
+                showAlert('UI error: Login form container element not found', 'danger');
+                
+                // Try to create a minimal login form as a fallback
+                const fallbackForm = document.createElement('div');
+                fallbackForm.className = 'container mt-5';
+                fallbackForm.innerHTML = `
+                    <div class="alert alert-danger">Error: Login form not found. Using fallback.</div>
+                    <div class="card">
+                        <div class="card-body">
+                            <h2>Login</h2>
+                            <form id="fallbackLoginForm">
+                                <div class="mb-3">
+                                    <input type="email" class="form-control" id="fallbackEmail" placeholder="Email" required>
+                                </div>
+                                <div class="mb-3">
+                                    <input type="password" class="form-control" id="fallbackPassword" placeholder="Password" required>
+                                </div>
+                                <button type="submit" class="btn btn-primary">Login</button>
+                            </form>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(fallbackForm);
+                
+                // Add event listener to the fallback form
+                document.getElementById('fallbackLoginForm').addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const email = document.getElementById('fallbackEmail').value.trim();
+                    const password = document.getElementById('fallbackPassword').value;
+                    await login(email, password);
+                });
+            }
+        }
+    } catch (error) {
+        console.error('Error updating view:', error);
+        showAlert('Failed to initialize application: ' + error.message, 'danger');
     }
 }
 
@@ -149,6 +256,15 @@ async function getNavigationButtons() {
 // Login function
 async function login(email, password) {
     try {
+        console.log('Login function called with email:', email);
+        
+        // Check if input is valid
+        if (!email || !password) {
+            showAlert('Email and password are required', 'danger');
+            return false;
+        }
+        
+        console.log('Making login request to /api/login');
         const response = await fetch('/api/login', {
             method: 'POST',
             headers: {
@@ -157,11 +273,14 @@ async function login(email, password) {
             body: JSON.stringify({ email, password })
         });
 
-        if (!response.ok) {
-            throw new Error('Invalid credentials');
-        }
-
+        console.log('Login response status:', response.status);
+        
         const data = await response.json();
+        console.log('Login response received:', { success: !!data.token, role: data.role });
+        
+        if (!response.ok) {
+            throw new Error(data.message || 'Invalid credentials');
+        }
         
         // Store all user data
         token = data.token;
@@ -174,37 +293,53 @@ async function login(email, password) {
         localStorage.setItem('userEmail', email);
         localStorage.setItem('username', data.username);
         
-        console.log('Login successful:', {
+        console.log('Login successful - saved data:', {
             username: data.username,
             role: userRole,
             defaultPage: currentPage
         });
+        
+        showAlert('Login successful!', 'success');
+
+        // Additional debug logging
+        console.log('Before interface update - DOM elements:');
+        console.log('loginFormContainer exists:', !!window.loginFormContainer);
+        console.log('adminPanel exists:', !!window.adminPanel);
+        console.log('adminToolbar exists:', !!window.adminToolbar);
+        console.log('publicView exists:', !!window.publicView);
 
         // Update view based on user role
-        if (userRole === 'admin') {
-            showAdminPanel();
-            loadAdminDashboard();
-        } else {
-            showPublicView();
-            loadPublicPage(currentPage);
-        }
+        setTimeout(() => {
+            console.log('In setTimeout callback - about to update UI based on role:', userRole);
+            if (userRole === 'admin') {
+                console.log('User is admin, calling showAdminPanel()');
+                showAdminPanel();
+                loadAdminDashboard();
+            } else {
+                console.log('User is not admin, calling showPublicView()');
+                showPublicView();
+                loadPublicPage(currentPage);
+            }
+            console.log('UI update completed');
+        }, 1000); // Short delay to let the alert show
 
         return true;
     } catch (error) {
         console.error('Login error:', error);
-        showAlert(error.message, 'danger');
+        showAlert(error.message || 'Login failed. Please try again.', 'danger');
         return false;
     }
 }
 
 async function loadAdminDashboard() {
     try {
+        console.log('Loading admin dashboard...');
         const response = await makeRequest('/api/admin');
-        if (response.ok) {
-            const data = await response.json();
-            renderAdminDashboard(data);
+        console.log('Admin dashboard API response:', response);
+        if (response) {
+            renderAdminDashboard(response);
         } else {
-            throw new Error('Failed to load admin dashboard');
+            throw new Error('Failed to load admin dashboard - empty response');
         }
     } catch (error) {
         console.error('Error loading admin dashboard:', error);
@@ -213,6 +348,7 @@ async function loadAdminDashboard() {
 }
 
 function renderAdminDashboard(data) {
+    console.log('Rendering admin dashboard with data:', data);
     // Clear existing dashboard elements first
     const existingDashboard = document.querySelector('.admin-stats');
     if (existingDashboard) {
@@ -222,43 +358,78 @@ function renderAdminDashboard(data) {
     // Create new dashboard container
     const dashboard = document.createElement('div');
     dashboard.className = 'admin-stats';
+    
+    // Handle both response formats from server.js (the two different implementations)
+    const stats = data.stats || data;
+    const serverTime = data.serverTime || new Date().toISOString();
+    const message = data.message || 'Dashboard loaded successfully';
+    
     dashboard.innerHTML = `
         <h2>Dashboard Statistics</h2>
         <div class="stats-grid">
             <div class="stat-item">
                 <span class="stat-label">Total Users</span>
-                <span class="stat-value">${data.stats.users}</span>
+                <span class="stat-value">${stats.users}</span>
             </div>
             <div class="stat-item">
                 <span class="stat-label">Total Pages</span>
-                <span class="stat-value">${data.stats.pages}</span>
+                <span class="stat-value">${stats.pages}</span>
             </div>
             <div class="stat-item">
                 <span class="stat-label">Settings</span>
-                <span class="stat-value">${data.stats.settings}</span>
+                <span class="stat-value">${stats.settings}</span>
             </div>
+        </div>
+        <div class="server-info mt-3">
+            <p class="text-muted">${message}</p>
+            <small class="text-muted">Server time: ${serverTime}</small>
         </div>
     `;
 
     // Insert the dashboard at the beginning of the content area
     const contentArea = document.getElementById('content');
-    contentArea.insertBefore(dashboard, contentArea.firstChild);
+    if (contentArea) {
+        console.log('Content area found, inserting dashboard');
+        contentArea.insertBefore(dashboard, contentArea.firstChild);
+    } else {
+        console.error('Content area not found - cannot insert dashboard');
+    }
 }
 
 function showAdminPanel() {
+    console.log('showAdminPanel called - checking DOM elements');
+    
+    // Check that the necessary elements exist
+    if (!loginFormContainer) {
+        console.error('loginFormContainer is not defined');
+    }
+    if (!adminPanel) {
+        console.error('adminPanel is not defined');
+    }
+    if (!adminToolbar) {
+        console.error('adminToolbar is not defined');
+    }
+    if (!publicView) {
+        console.error('publicView is not defined');
+    }
+    
     // Clear existing content
-    loginFormContainer.style.display = 'none';
-    publicView.style.display = 'none';
+    if (loginFormContainer) loginFormContainer.style.display = 'none';
+    if (publicView) publicView.style.display = 'none';
     
     // Clear any existing dashboard content
     const content = document.getElementById('content');
     if (content) {
         content.innerHTML = '';
+    } else {
+        console.error('content element not found');
     }
     
     // Show admin panel and toolbar
-    adminToolbar.style.display = 'flex';
-    adminPanel.style.display = 'block';
+    if (adminToolbar) adminToolbar.style.display = 'flex';
+    if (adminPanel) adminPanel.style.display = 'block';
+    
+    console.log('Admin panel display updated - loading dashboard');
     
     // Load fresh admin dashboard data
     loadAdminDashboard();
@@ -266,10 +437,10 @@ function showAdminPanel() {
 }
 
 function showPublicView() {
-    loginFormContainer.style.display = 'none';
-    adminToolbar.style.display = 'none';
-    adminPanel.style.display = 'none';
-    publicView.style.display = 'block';
+    if (loginFormContainer) loginFormContainer.style.display = 'none';
+    if (adminToolbar) adminToolbar.style.display = 'none';
+    if (adminPanel) adminPanel.style.display = 'none';
+    if (publicView) publicView.style.display = 'block';
 }
 
 // Register function
@@ -355,28 +526,94 @@ async function updatePage(pageData) {
 }
 
 async function loadPageContent(pageId) {
+    if (!pageId) {
+        console.error('Invalid pageId provided to loadPageContent');
+        showAlert('Invalid page ID', 'danger');
+        return;
+    }
+    
+    console.log('Loading content for page:', pageId);
+    
     try {
+        // Ensure the content container exists
+        const container = document.getElementById('content');
+        if (!container) {
+            throw new Error('Content container not found. Please refresh the page.');
+        }
+        
         const page = await makeRequest(`/api/pages/${pageId}`);
         if (!page) {
-            throw new Error('Page not found');
+            throw new Error('Page not found or empty response received');
         }
 
         // Update current page
         currentPage = pageId;
+        localStorage.setItem('currentPage', pageId);
         
         // Render content
+        console.log('Page data:', page);
+        
+        // Reset any error messages
+        const errorContainer = document.getElementById('error-container');
+        if (errorContainer) {
+            errorContainer.innerHTML = '';
+            errorContainer.style.display = 'none';
+        }
+        
+        // Check if snippets need position adjustment
+        if (page.snippets && Array.isArray(page.snippets)) {
+            // Fix any snippet positions that are off-screen
+            page.snippets = page.snippets.map(snippet => {
+                if (!snippet.position) {
+                    snippet.position = { x: 50, y: 50 };
+                }
+                
+                // Ensure snippets aren't too far to the right or left
+                if (snippet.position.x > 1500 || snippet.position.x < 0) {
+                    snippet.position.x = 50;
+                }
+                
+                return snippet;
+            });
+        }
+        
+        // Render the snippets and navigation buttons
         renderSnippets(page.snippets || [], page.navButtons || []);
 
         // Update page navigation buttons
-        const pageButtons = pagesNav.querySelectorAll('.page-button');
+        const pageButtons = document.querySelectorAll('.page-button');
         pageButtons.forEach(btn => {
-            const isActive = btn.textContent.trim().toLowerCase() === pageId.toLowerCase();
+            const buttonPageId = btn.getAttribute('data-page-id') || btn.textContent.trim().toLowerCase();
+            const isActive = buttonPageId === pageId.toLowerCase();
             btn.classList.toggle('btn-primary', isActive);
             btn.classList.toggle('btn-outline-primary', !isActive);
         });
     } catch (error) {
+        console.error('Error loading page content:', error);
+        
+        // Create error message container if it doesn't exist
+        let errorContainer = document.getElementById('error-container');
+        if (!errorContainer) {
+            errorContainer = document.createElement('div');
+            errorContainer.id = 'error-container';
+            errorContainer.className = 'alert alert-danger mt-3';
+            
+            const contentArea = document.getElementById('content');
+            if (contentArea) {
+                contentArea.innerHTML = '';
+                contentArea.appendChild(errorContainer);
+            } else {
+                // If content area is missing, try to add to a parent element
+                const adminPanel = document.getElementById('admin-panel');
+                if (adminPanel) {
+                    adminPanel.appendChild(errorContainer);
+                }
+            }
+        }
+        
+        errorContainer.style.display = 'block';
+        errorContainer.innerHTML = `<strong>Error:</strong> Failed to load page: ${error.message}`;
         showAlert(`Failed to load page: ${error.message}`, 'danger');
-        console.error('Page loading error:', error);
     }
 }
 
@@ -445,6 +682,7 @@ async function createPage(name) {
 }
 
 function showCreatePageModal() {
+    console.log('Show create page modal called');
     const modalHtml = `
         <div class="modal fade" id="createPageModal" tabindex="-1">
             <div class="modal-dialog">
@@ -518,8 +756,17 @@ document.getElementById('addPageBtn').addEventListener('click', () => {
 });
 
 async function addSnippet(html) {
+    if (!html) {
+        console.error('No HTML provided to addSnippet');
+        return;
+    }
+    
+    console.log('Adding snippet with HTML');
+    
     try {
         const page = await getCurrentPage();
+        console.log('Current page for adding snippet:', page);
+        
         const newSnippet = {
             id: Date.now(),
             html,
@@ -528,10 +775,16 @@ async function addSnippet(html) {
         };
         
         const updatedSnippets = [...(page.snippets || []), newSnippet];
+        
+        console.log('Updating page with new snippet');
         await updatePage({ ...page, snippets: updatedSnippets });
+        
+        console.log('Reloading page content');
         await loadPageContent(currentPage);
+        
         showAlert('Snippet added successfully', 'success');
     } catch (error) {
+        console.error('Error adding snippet:', error);
         showAlert(`Failed to add snippet: ${error.message}`, 'danger');
     }
 }
@@ -575,10 +828,18 @@ async function deleteSnippet(snippetId) {
 }
 
 function renderPages(pages) {
+    if (!pagesNav) {
+        console.error('pagesNav element not found');
+        return;
+    }
+    
+    console.log('Rendering pages:', pages);
+    
     pagesNav.innerHTML = pages.map(page => `
         <button 
-            class="btn ${currentPage === page.id ? 'btn-primary' : 'btn-outline-primary'} page-button"
-            onclick="switchPage('${page.id}')"
+            class="btn ${currentPage === page.id ? 'btn-primary' : 'btn-outline-primary'} page-button mx-1"
+            onclick="navigateToPage('${page.id}')"
+            data-page-id="${page.id}"
         >
             ${page.name}
         </button>
@@ -586,30 +847,70 @@ function renderPages(pages) {
 }
 
 function renderSnippets(snippets = [], navButtons = []) {
-    const container = isPreviewMode ? publicContent : content;
+    const container = isPreviewMode ? document.getElementById('public-content') : document.getElementById('content');
     
-    // First render snippets
-    container.innerHTML = snippets.map(snippet => `
-        <div class="snippet" id="snippet-${snippet.id}" 
-            style="left: ${snippet.position?.x || 0}px; top: ${snippet.position?.y || 0}px; 
-                   width: ${snippet.size?.width || 400}px; height: ${snippet.size?.height || 300}px;">
-            <div class="snippet-content">
-                <iframe
-                    id="frame-${snippet.id}"
-                    style="width: 100%; height: 100%; border: none;"
-                    srcdoc="${snippet.html.replace(/"/g, '&quot;')}"
-                    sandbox="allow-scripts allow-same-origin allow-modals"
-                ></iframe>
-            </div>
-            ${!isPreviewMode ? `
-                <div class="snippet-controls">
-                    <button class="btn btn-sm btn-primary" onclick="editSnippet(${snippet.id})">Edit</button>
-                    <button class="btn btn-sm btn-danger" onclick="deleteSnippet(${snippet.id})">Delete</button>
-                </div>
-                <div class="resize-handle"></div>
-            ` : ''}
-        </div>
-    `).join('');
+    if (!container) {
+        console.error('Container element not found for rendering snippets. isPreviewMode:', isPreviewMode);
+        showAlert('Failed to load page: Container element not found', 'danger');
+        return;
+    }
+    
+    console.log('Rendering snippets to container:', container.id, 'Count:', snippets.length);
+    
+    // First clear existing content
+    container.innerHTML = '';
+    
+    // Add snippets to the container
+    snippets.forEach(snippet => {
+        const snippetDiv = document.createElement('div');
+        snippetDiv.className = 'snippet';
+        snippetDiv.id = `snippet-${snippet.id}`;
+        
+        // Set position and size with bounds checking to prevent off-screen placement
+        let xPos = snippet.position?.x || 0;
+        let yPos = snippet.position?.y || 0;
+        
+        // Ensure snippets aren't too far to the right
+        if (xPos > 1500) xPos = 50;
+        
+        snippetDiv.style.left = `${xPos}px`;
+        snippetDiv.style.top = `${yPos}px`;
+        snippetDiv.style.width = `${snippet.size?.width || 400}px`;
+        snippetDiv.style.height = `${snippet.size?.height || 300}px`;
+        
+        // Create snippet content
+        const content = document.createElement('div');
+        content.className = 'snippet-content';
+        
+        const iframe = document.createElement('iframe');
+        iframe.id = `frame-${snippet.id}`;
+        iframe.style.width = '100%';
+        iframe.style.height = '100%';
+        iframe.style.border = 'none';
+        iframe.srcdoc = snippet.html;
+        iframe.sandbox = 'allow-scripts allow-same-origin allow-modals';
+        
+        content.appendChild(iframe);
+        snippetDiv.appendChild(content);
+        
+        // Add controls if not in preview mode
+        if (!isPreviewMode) {
+            const controls = document.createElement('div');
+            controls.className = 'snippet-controls';
+            controls.innerHTML = `
+                <button class="btn btn-sm btn-primary" onclick="editSnippet(${snippet.id})">Edit</button>
+                <button class="btn btn-sm btn-danger" onclick="deleteSnippet(${snippet.id})">Delete</button>
+            `;
+            
+            const resizeHandle = document.createElement('div');
+            resizeHandle.className = 'resize-handle';
+            
+            snippetDiv.appendChild(controls);
+            snippetDiv.appendChild(resizeHandle);
+        }
+        
+        container.appendChild(snippetDiv);
+    });
 
     // Then render navigation buttons
     renderNavigationButtons(navButtons);
@@ -646,42 +947,116 @@ function throttle(func, limit) {
 // Debounced update functions
 const debouncedUpdatePosition = debounce(async (snippetId, position) => {
     try {
+        console.log(`Saving position for snippet ${snippetId}:`, position);
         const page = await getCurrentPage();
         if (!page) throw new Error('Failed to get current page');
 
-        const updatedSnippets = page.snippets.map(s => 
-            s.id === snippetId ? { ...s, position } : s
-        );
+        // Find the snippet to update
+        const snippetIndex = page.snippets.findIndex(s => s.id === snippetId);
+        if (snippetIndex === -1) {
+            console.error(`Snippet ${snippetId} not found in current page`);
+            return;
+        }
 
-        await updatePage({ ...page, snippets: updatedSnippets });
+        // Create a new array with the updated snippet
+        const updatedSnippets = [...page.snippets];
+        updatedSnippets[snippetIndex] = {
+            ...updatedSnippets[snippetIndex],
+            position
+        };
+
+        // Save the updated page
+        const result = await updatePage({ 
+            ...page, 
+            snippets: updatedSnippets 
+        });
+        
+        console.log(`Position saved for snippet ${snippetId}:`, position);
+        showAlert('Position saved', 'success', 1000); // Brief success message
     } catch (error) {
         console.error('Position update error:', error);
-        showAlert('Failed to save position', 'danger');
+        showAlert('Failed to save position: ' + error.message, 'danger');
     }
-}, 500);
+}, 300); // Reduce debounce time for more responsive saves
 
 const debouncedUpdateSize = debounce(async (snippetId, size) => {
     try {
+        console.log(`Saving size for snippet ${snippetId}:`, size);
         const page = await getCurrentPage();
         if (!page) throw new Error('Failed to get current page');
 
-        const updatedSnippets = page.snippets.map(s => 
-            s.id === snippetId ? { ...s, size } : s
-        );
+        // Find the snippet to update
+        const snippetIndex = page.snippets.findIndex(s => s.id === snippetId);
+        if (snippetIndex === -1) {
+            console.error(`Snippet ${snippetId} not found in current page`);
+            return;
+        }
 
-        await updatePage({ ...page, snippets: updatedSnippets });
+        // Create a new array with the updated snippet
+        const updatedSnippets = [...page.snippets];
+        updatedSnippets[snippetIndex] = {
+            ...updatedSnippets[snippetIndex],
+            size
+        };
+
+        // Save the updated page
+        const result = await updatePage({ 
+            ...page, 
+            snippets: updatedSnippets 
+        });
+        
+        console.log(`Size saved for snippet ${snippetId}:`, size);
+        showAlert('Size saved', 'success', 1000); // Brief success message
     } catch (error) {
         console.error('Size update error:', error);
-        showAlert('Failed to save size', 'danger');
+        showAlert('Failed to save size: ' + error.message, 'danger');
     }
-}, 500);
+}, 300); // Reduce debounce time for more responsive saves
 
+// Function to forcefully save the position immediately (no debounce)
+async function savePositionImmediately(snippetId, position) {
+    try {
+        console.log(`Saving position immediately for snippet ${snippetId}:`, position);
+        const page = await getCurrentPage();
+        if (!page) throw new Error('Failed to get current page');
+
+        // Find the snippet to update
+        const snippetIndex = page.snippets.findIndex(s => s.id === snippetId);
+        if (snippetIndex === -1) {
+            console.error(`Snippet ${snippetId} not found in current page`);
+            return;
+        }
+
+        // Create a new array with the updated snippet
+        const updatedSnippets = [...page.snippets];
+        updatedSnippets[snippetIndex] = {
+            ...updatedSnippets[snippetIndex],
+            position
+        };
+
+        // Save the updated page
+        await updatePage({ 
+            ...page, 
+            snippets: updatedSnippets 
+        });
+        
+        console.log(`Position saved immediately for snippet ${snippetId}:`, position);
+    } catch (error) {
+        console.error('Immediate position update error:', error);
+        showAlert('Failed to save position: ' + error.message, 'danger');
+    }
+}
+
+// Updated setupDragAndResize function
 function setupDragAndResize() {
     const snippets = document.querySelectorAll('.snippet');
     snippets.forEach(snippet => {
         let isDragging = false;
         let isResizing = false;
         let startX, startY, startWidth, startHeight, initialX, initialY;
+        let currentPosition = { x: 0, y: 0 };
+        let currentSize = { width: 0, height: 0 };
+        let snippetId = 0;
 
         const onMouseMove = (e) => {
             if (isDragging) {
@@ -695,11 +1070,11 @@ function setupDragAndResize() {
                 snippet.style.left = `${newX}px`;
                 snippet.style.top = `${newY}px`;
                 
+                // Update current position
+                currentPosition = { x: newX, y: newY };
+                
                 // Debounce the position update
-                debouncedUpdatePosition(
-                    parseInt(snippet.id.split('-')[1]),
-                    { x: newX, y: newY }
-                );
+                debouncedUpdatePosition(snippetId, currentPosition);
             } else if (isResizing) {
                 e.preventDefault();
                 const width = startWidth + (e.clientX - startX);
@@ -709,29 +1084,36 @@ function setupDragAndResize() {
                     snippet.style.width = `${width}px`;
                     snippet.style.height = `${height}px`;
                     
+                    // Update current size
+                    currentSize = { width, height };
+                    
                     // Debounce the size update
-                    debouncedUpdateSize(
-                        parseInt(snippet.id.split('-')[1]),
-                        { width, height }
-                    );
+                    debouncedUpdateSize(snippetId, currentSize);
                 }
             }
         };
 
-        const onMouseUp = () => {
-            if (isDragging || isResizing) {
-                isDragging = false;
-                isResizing = false;
-                document.removeEventListener('mousemove', onMouseMove);
-                document.removeEventListener('mouseup', onMouseUp);
+        const onMouseUp = async () => {
+            if (isDragging) {
+                // Force an immediate position save on mouse up
+                await savePositionImmediately(snippetId, currentPosition);
             }
+            
+            isDragging = false;
+            isResizing = false;
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
         };
 
         snippet.addEventListener('mousedown', (e) => {
+            // Get snippet ID
+            snippetId = parseInt(snippet.id.split('-')[1]);
+            
             if (e.target.classList.contains('resize-handle')) {
                 isResizing = true;
                 startWidth = snippet.offsetWidth;
                 startHeight = snippet.offsetHeight;
+                currentSize = { width: startWidth, height: startHeight };
                 startX = e.clientX;
                 startY = e.clientY;
                 document.addEventListener('mousemove', onMouseMove);
@@ -740,6 +1122,7 @@ function setupDragAndResize() {
                 isDragging = true;
                 initialX = snippet.offsetLeft;
                 initialY = snippet.offsetTop;
+                currentPosition = { x: initialX, y: initialY };
                 startX = e.clientX;
                 startY = e.clientY;
                 document.addEventListener('mousemove', onMouseMove);
@@ -750,86 +1133,88 @@ function setupDragAndResize() {
 }
 
 function showAlert(message, type) {
+    const alertContainer = document.getElementById('alert-container');
+    if (!alertContainer) {
+        console.error('Alert container not found');
+        return;
+    }
+    
     const alert = document.createElement('div');
     alert.className = `alert alert-${type} alert-dismissible fade show`;
     alert.innerHTML = `
         ${message}
         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
     `;
-    document.body.appendChild(alert);
-    setTimeout(() => alert.remove(), 5000);
+    
+    alertContainer.appendChild(alert);
+    
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+        if (alert.parentElement) {
+            alert.classList.remove('show');
+            setTimeout(() => alert.remove(), 300);
+        }
+    }, 5000);
 }
 
 // Event Handlers
-loginForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const email = document.getElementById('email').value;
-    const password = document.getElementById('password').value;
-    await login(email, password);
-});
-
-registerForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const email = document.getElementById('regEmail').value;
-    const username = document.getElementById('regUsername').value;
-    const password = document.getElementById('regPassword').value;
-    const confirmPassword = document.getElementById('confirmPassword').value;
-    
-    if (password !== confirmPassword) {
-        showAlert('Passwords do not match', 'danger');
-        return;
-    }
-    
-    await register(email, password);
-});
-
 document.getElementById('addSnippetBtn').addEventListener('click', () => {
     const html = prompt('Enter HTML code for the snippet:');
     if (html) addSnippet(html);
 });
 
-document.getElementById('previewBtn').addEventListener('click', async () => {
-    isPreviewMode = !isPreviewMode;
-    window.isPreviewMode = isPreviewMode;
-    const previewBtn = document.getElementById('previewBtn');
-    const adminToolbar = document.getElementById('admin-toolbar');
-    const addSnippetBtn = document.getElementById('addSnippetBtn');
-    const addPageBtn = document.getElementById('addPageBtn');
-    const addNavBtn = document.getElementById('addNavBtn');
-    
-    previewBtn.textContent = isPreviewMode ? 'Exit Preview' : 'Preview';
-    
-    addSnippetBtn.style.display = isPreviewMode ? 'none' : 'inline-block';
-    addPageBtn.style.display = isPreviewMode ? 'none' : 'inline-block';
-    addNavBtn.style.display = isPreviewMode ? 'none' : 'inline-block';
-    
-    try {
-        const page = await getCurrentPage();
-        
-        if (isPreviewMode) {
-            adminPanel.style.display = 'none';
-            publicView.style.display = 'block';
-            await loadPublicPage(currentPage);
-        } else {
-            adminPanel.style.display = 'block';
-            publicView.style.display = 'none';
-            await loadPageContent(currentPage);
-        }
-    } catch (error) {
-        console.error('Error toggling preview mode:', error);
-        showAlert('Failed to toggle preview mode', 'danger');
-    }
-});
-
-document.getElementById('logoutBtn').addEventListener('click', logout);
+document.getElementById('preview-toggle-btn').addEventListener('click', togglePreviewMode);
 
 // Update the navigation functions
 function navigateToPage(pageId) {
     console.log('Navigating to page:', pageId);
-    if (isPreviewMode || !userRole) {
-        loadPublicPage(pageId);
-    } else {
-        switchPage(pageId);
+    
+    if (!pageId) {
+        console.error('Invalid pageId provided to navigateToPage');
+        showAlert('Invalid page ID', 'danger');
+        return;
+    }
+
+    try {
+        // Check if our DOM elements are available
+        if (isPreviewMode && !document.getElementById('public-content')) {
+            console.error('Public content container not found, cannot navigate');
+            showAlert('Navigation failed: UI elements not ready. Please refresh the page.', 'danger');
+            return;
+        }
+        
+        if (!isPreviewMode && !document.getElementById('content')) {
+            console.error('Content container not found, cannot navigate');
+            showAlert('Navigation failed: UI elements not ready. Please refresh the page.', 'danger');
+            return;
+        }
+        
+        // Set the current page
+        currentPage = pageId;
+        localStorage.setItem('currentPage', pageId);
+        
+        // Handle navigation differently based on mode and role
+        if (userRole === 'admin') {
+            if (isPreviewMode) {
+                loadPublicPage(pageId);
+            } else {
+                loadPageContent(pageId);
+            }
+        } else {
+            loadPublicPage(pageId);
+        }
+        
+        // Update page navigation buttons if they exist
+        const pageButtons = document.querySelectorAll('.page-button');
+        pageButtons.forEach(btn => {
+            const buttonPageId = btn.getAttribute('data-page-id') || btn.textContent.trim().toLowerCase();
+            const isActive = buttonPageId === pageId.toLowerCase();
+            btn.classList.toggle('btn-primary', isActive);
+            btn.classList.toggle('btn-outline-primary', !isActive);
+        });
+    } catch (error) {
+        console.error('Error during page navigation:', error);
+        showAlert('Navigation failed: ' + error.message, 'danger');
     }
 }
 
@@ -868,7 +1253,7 @@ async function loadPublicPage(pageId) {
         
         const container = document.getElementById('public-content');
         if (!container) {
-            throw new Error('Public content container not found');
+            throw new Error('Public content container not found. Please refresh the page.');
         }
 
         // Clear existing content
@@ -876,47 +1261,99 @@ async function loadPublicPage(pageId) {
 
         // Add navigation bar for authenticated users
         if (token) {
-            const navBar = document.createElement('div');
-            navBar.className = 'bg-light p-2 d-flex justify-content-between align-items-center';
-            navBar.style.position = 'fixed';
-            navBar.style.top = '0';
-            navBar.style.left = '0';
-            navBar.style.right = '0';
-            navBar.style.zIndex = '1000';
-            
-            // Get all available pages for navigation
-            const pages = await makeRequest('/api/pages');
-            const navButtons = pages.map(p => `
-                <button 
-                    class="btn ${p.id === pageId ? 'btn-primary' : 'btn-outline-primary'} btn-sm me-2"
-                    onclick="navigateToPage('${p.id}')"
-                >
-                    ${p.name}
-                </button>
-            `).join('');
-            
-            navBar.innerHTML = `
-                <div class="nav-buttons">
-                    ${navButtons}
-                </div>
-                <div class="d-flex align-items-center">
-                    <span class="me-3">Welcome, ${localStorage.getItem('username') || 'User'}</span>
-                    <button class="btn btn-danger btn-sm" onclick="logout()">Logout</button>
-                </div>
-            `;
-            
-            container.appendChild(navBar);
-            container.style.paddingTop = '60px';
+            try {
+                const navBar = document.createElement('div');
+                navBar.className = 'bg-light p-2 d-flex justify-content-between align-items-center';
+                navBar.style.position = 'fixed';
+                navBar.style.top = '0';
+                navBar.style.left = '0';
+                navBar.style.right = '0';
+                navBar.style.zIndex = '1000';
+                
+                // Get all available pages for navigation
+                const pages = await makeRequest('/api/pages');
+                
+                if (!pages || !Array.isArray(pages)) {
+                    throw new Error('Failed to load pages for navigation');
+                }
+                
+                const navButtons = pages.map(p => `
+                    <button 
+                        class="btn ${p.id === pageId ? 'btn-primary' : 'btn-outline-primary'} btn-sm me-2"
+                        onclick="navigateToPage('${p.id}')"
+                    >
+                        ${p.name}
+                    </button>
+                `).join('');
+                
+                navBar.innerHTML = `
+                    <div class="nav-buttons">
+                        ${navButtons}
+                    </div>
+                    <div class="d-flex align-items-center">
+                        <span class="me-3">Welcome, ${localStorage.getItem('username') || 'User'}</span>
+                        ${isPreviewMode && userRole === 'admin' ? 
+                          `<button class="btn btn-warning btn-sm me-2" onclick="togglePreviewMode()">Exit Preview</button>` : ''}
+                        <button class="btn btn-danger btn-sm" onclick="logout()">Logout</button>
+                    </div>
+                `;
+                
+                container.appendChild(navBar);
+                container.style.paddingTop = '60px';
+            } catch (navError) {
+                console.error('Error building navigation:', navError);
+                // Continue with page load even if navigation fails
+            }
         }
+        
+        // Create a wrapper for snippets with relative positioning
+        const snippetsWrapper = document.createElement('div');
+        snippetsWrapper.className = 'snippets-wrapper';
+        snippetsWrapper.style.position = 'relative';
+        snippetsWrapper.style.minHeight = '100vh';
+        container.appendChild(snippetsWrapper);
         
         // Render snippets
         if (page.snippets && Array.isArray(page.snippets)) {
+            // Check if we need to adjust viewport positioning
+            let minTop = Number.MAX_SAFE_INTEGER;
+            let maxRight = 0;
+            
+            // First pass - find minimum top position and maximum right edge
             page.snippets.forEach(snippet => {
+                const top = snippet.position?.y || 0;
+                const left = snippet.position?.x || 0;
+                const width = snippet.size?.width || 400;
+                
+                if (top < minTop) {
+                    minTop = top;
+                }
+                
+                const rightEdge = left + width;
+                if (rightEdge > maxRight) {
+                    maxRight = rightEdge;
+                }
+            });
+            
+            // Calculate offset to ensure snippets are visible
+            const topOffset = minTop < 0 ? Math.abs(minTop) + 70 : 0;
+            
+            // Check if content is too far to the right and needs adjustment
+            const viewportWidth = window.innerWidth;
+            const horizontalAdjustment = maxRight > viewportWidth && maxRight > 1500 ? 
+                Math.max(50 - (page.snippets[0]?.position?.x || 0), 0) : 0;
+            
+            // Second pass - render with adjusted positions
+            page.snippets.forEach(snippet => {
+                // Create a more reasonable default position if position is missing or off-screen
+                let xPos = (snippet.position?.x || 0) + horizontalAdjustment;
+                if (xPos > 1500 || xPos < 0) xPos = 50;
+                
                 const snippetDiv = document.createElement('div');
                 snippetDiv.className = 'snippet';
                 snippetDiv.style.position = 'absolute';
-                snippetDiv.style.left = `${snippet.position?.x || 0}px`;
-                snippetDiv.style.top = `${snippet.position?.y || 0}px`;
+                snippetDiv.style.left = `${xPos}px`;
+                snippetDiv.style.top = `${(snippet.position?.y || 0) + topOffset}px`;
                 snippetDiv.style.width = `${snippet.size?.width || 400}px`;
                 snippetDiv.style.height = `${snippet.size?.height || 300}px`;
                 
@@ -924,17 +1361,25 @@ async function loadPublicPage(pageId) {
                 iframe.style.width = '100%';
                 iframe.style.height = '100%';
                 iframe.style.border = 'none';
-                iframe.srcdoc = snippet.html;
+                iframe.srcdoc = snippet.html || '<p>Empty snippet</p>';
                 iframe.sandbox = 'allow-scripts allow-same-origin allow-modals';
                 
                 snippetDiv.appendChild(iframe);
-                container.appendChild(snippetDiv);
+                snippetsWrapper.appendChild(snippetDiv);
             });
+        } else {
+            // Add a message if there are no snippets
+            const noContent = document.createElement('div');
+            noContent.className = 'alert alert-info mt-4 text-center';
+            noContent.innerHTML = 'This page has no content yet.';
+            snippetsWrapper.appendChild(noContent);
         }
 
         // Render custom navigation buttons
         if (page.navButtons && Array.isArray(page.navButtons)) {
             page.navButtons.forEach(navData => {
+                if (!navData) return; // Skip undefined buttons
+                
                 const navButton = document.createElement('div');
                 navButton.className = 'draggable-nav-button';
                 navButton.style.position = 'absolute';
@@ -951,7 +1396,7 @@ async function loadPublicPage(pageId) {
                 };
 
                 navButton.appendChild(button);
-                container.appendChild(navButton);
+                snippetsWrapper.appendChild(navButton);
             });
         }
 
@@ -968,15 +1413,6 @@ window.isPreviewMode = isPreviewMode;
 
 // Initialize
 updateView();
-
-// Add settings button to admin toolbar
-if (adminToolbar) {
-    const settingsBtn = document.createElement('button');
-    settingsBtn.className = 'btn btn-secondary me-2';
-    settingsBtn.textContent = 'Settings';
-    settingsBtn.onclick = showSettingsModal;
-    adminToolbar.querySelector('.container-fluid div').appendChild(settingsBtn);
-}
 
 // Settings management functions
 async function showSettingsModal() {
@@ -1104,13 +1540,28 @@ function showLoginForm() {
 
 // Update logout function
 function logout() {
-    token = null;
-    userRole = null;
+    console.log('Logging out...');
+    
+    // Clear tokens and auth data
+    token = '';
+    userRole = '';
+    
+    // Reset preview mode
+    isPreviewMode = false;
+    window.isPreviewMode = false;
+    
+    // Clear all localStorage items
     localStorage.removeItem('token');
     localStorage.removeItem('userRole');
     localStorage.removeItem('userEmail');
     localStorage.removeItem('username');
+    localStorage.setItem('isPreviewMode', 'false');
+    
+    // Optionally keep currentPage for convenience
+    
+    // Show login form
     updateView();
+    showAlert('You have been logged out.', 'info');
 }
 
 // Navigation functions
@@ -1181,7 +1632,7 @@ function createDraggableNavButton(navData = null) {
     container.dataset.navId = navData?.id || Date.now().toString();
 
     const button = document.createElement('button');
-    button.className = `nav-button ${navData?.style || 'futuristic'}`;
+    button.className = `nav-button ${navData?.style || 'btn-primary'}`;
     button.textContent = navData?.text || 'Go to Home';
     button.dataset.targetPage = navData?.targetPage || 'home';
     
@@ -1772,61 +2223,143 @@ function createNavigationButton(text, targetPage) {
     };
 }
 
-// Add button style options to the button creation form
+// Update the showAddButtonForm function
 function showAddButtonForm() {
-    const modal = document.createElement('div');
-    modal.className = 'modal';
-    modal.innerHTML = `
-        <div class="modal-content">
-            <h3>Add Navigation Button</h3>
-            <div class="form-group">
-                <label for="buttonText">Button Text:</label>
-                <input type="text" id="buttonText" class="form-control">
+    console.log('showAddButtonForm called');
+    
+    // First, load available pages to populate the dropdown
+    loadPages().then(pages => {
+        const modal = document.createElement('div');
+        modal.className = 'modal show d-block';
+        modal.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+        modal.innerHTML = `
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Add Navigation Button</h5>
+                        <button type="button" class="btn-close" onclick="this.closest('.modal').remove()"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-group mb-3">
+                            <label for="buttonText">Button Text:</label>
+                            <input type="text" id="buttonText" class="form-control" value="Go to Page">
+                        </div>
+                        <div class="form-group mb-3">
+                            <label for="buttonStyleSelect">Button Style:</label>
+                            <select id="buttonStyleSelect" class="form-control">
+                                <option value="futuristic">Futuristic</option>
+                                <option value="futuristic pulse">Futuristic with Pulse</option>
+                                <option value="neon">Neon</option>
+                                <option value="neon pulse">Neon with Pulse</option>
+                            </select>
+                        </div>
+                        <div class="form-group mb-3">
+                            <label for="targetPage">Target Page:</label>
+                            <select id="targetPage" class="form-control">
+                                ${pages.map(page => 
+                                    `<option value="${page.id}">${page.name}</option>`
+                                ).join('')}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button onclick="this.closest('.modal').remove()" class="btn btn-secondary">Cancel</button>
+                        <button id="saveButtonBtn" class="btn btn-primary">Save</button>
+                    </div>
+                </div>
             </div>
-            <div class="form-group">
-                <label for="buttonStyleSelect">Button Style:</label>
-                <select id="buttonStyleSelect" class="form-control">
-                    <option value="futuristic">Futuristic</option>
-                    <option value="futuristic pulse">Futuristic with Pulse</option>
-                    <option value="neon">Neon</option>
-                    <option value="neon pulse">Neon with Pulse</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label for="targetPage">Target Page:</label>
-                <select id="targetPage" class="form-control">
-                    <!-- Pages will be populated here -->
-                </select>
-            </div>
-            <div class="button-group">
-                <button onclick="saveButton()" class="btn btn-primary">Save</button>
-                <button onclick="closeModal()" class="btn btn-secondary">Cancel</button>
-            </div>
-        </div>
-    `;
+        `;
+
+        document.body.appendChild(modal);
+        
+        // Add click handler for the save button
+        document.getElementById('saveButtonBtn').addEventListener('click', async function() {
+            try {
+                const text = document.getElementById('buttonText').value;
+                const style = document.getElementById('buttonStyleSelect').value;
+                const targetPage = document.getElementById('targetPage').value;
+                
+                const navButton = {
+                    id: Date.now().toString(),
+                    text: text,
+                    style: style,
+                    targetPage: targetPage,
+                    position: { x: 20, y: 20 }
+                };
+                
+                console.log('Creating navigation button:', navButton);
+                
+                const page = await getCurrentPage();
+                if (!page.navButtons) {
+                    page.navButtons = [];
+                }
+                
+                page.navButtons.push(navButton);
+                await updatePage(page);
+                
+                await loadPageContent(currentPage);
+                modal.remove();
+                
+                showAlert('Navigation button added successfully', 'success');
+            } catch (error) {
+                console.error('Error adding navigation button:', error);
+                showAlert('Failed to add navigation button', 'danger');
+            }
+        });
+    }).catch(error => {
+        console.error('Error loading pages for button form:', error);
+        showAlert('Failed to load pages', 'danger');
+    });
 }
 
-// Make navigation function globally available
-window.navigateToPage = async function(pageId) {
-    console.log('Navigating to page:', pageId);
-    try {
-        const page = await makeRequest(`/api/pages/${pageId}`);
-        if (!page) {
-            throw new Error('Page not found');
-        }
-
-        // Update current page
-        currentPage = pageId;
-        localStorage.setItem('currentPage', pageId);
-
-        // Load the page content
-        if (userRole === 'admin' && !isPreviewMode) {
-            await loadPageContent(pageId);
-        } else {
-            await loadPublicPage(pageId);
-        }
-    } catch (error) {
-        console.error('Navigation error:', error);
-        showAlert('Failed to navigate: ' + error.message, 'danger');
+// Add this new function to toggle preview mode
+function togglePreviewMode() {
+    console.log('togglePreviewMode called');
+    isPreviewMode = !isPreviewMode;
+    window.isPreviewMode = isPreviewMode;
+    
+    // Save preview mode state to localStorage
+    localStorage.setItem('isPreviewMode', isPreviewMode ? 'true' : 'false');
+    
+    const previewToggleBtn = document.getElementById('preview-toggle-btn');
+    
+    if (previewToggleBtn) {
+        previewToggleBtn.textContent = isPreviewMode ? 'Exit Preview' : 'Preview Mode';
     }
-}; 
+    
+    const addSnippetBtn = document.getElementById('add-snippet-btn');
+    const addPageBtn = document.getElementById('add-page-btn');
+    const addNavBtn = document.getElementById('add-nav-btn');
+    
+    if (addSnippetBtn) addSnippetBtn.style.display = isPreviewMode ? 'none' : 'inline-block';
+    if (addPageBtn) addPageBtn.style.display = isPreviewMode ? 'none' : 'inline-block';
+    if (addNavBtn) addNavBtn.style.display = isPreviewMode ? 'none' : 'inline-block';
+    
+    try {
+        getCurrentPage().then(page => {
+            if (isPreviewMode) {
+                adminPanel.style.display = 'none';
+                publicView.style.display = 'block';
+                loadPublicPage(currentPage);
+            } else {
+                adminPanel.style.display = 'block';
+                publicView.style.display = 'none';
+                loadPageContent(currentPage);
+            }
+        }).catch(error => {
+            console.error('Error getting current page:', error);
+            showAlert('Failed to toggle preview mode', 'danger');
+            
+            // Revert to non-preview mode on error
+            isPreviewMode = false;
+            localStorage.setItem('isPreviewMode', 'false');
+        });
+    } catch (error) {
+        console.error('Error toggling preview mode:', error);
+        showAlert('Failed to toggle preview mode', 'danger');
+        
+        // Revert to non-preview mode on error
+        isPreviewMode = false;
+        localStorage.setItem('isPreviewMode', 'false');
+    }
+} 
