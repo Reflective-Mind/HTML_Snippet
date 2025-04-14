@@ -39,6 +39,12 @@ document.addEventListener('DOMContentLoaded', () => {
     publicView = document.getElementById('public-view');
     adminToolbar = document.getElementById('admin-toolbar');
     pagesNav = document.getElementById('pages-nav');
+    content = document.getElementById('content');
+    publicContent = document.getElementById('public-content');
+    
+    // Set up global helpers and event delegation
+    setupGlobalHelpers();
+    setupEventDelegation();
     
     // Initialize the view based on authentication
     updateView();
@@ -59,6 +65,18 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     
+    // Add explicit handlers to navigation buttons
+    const pageButtons = document.querySelectorAll('.page-button');
+    pageButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            const pageId = this.getAttribute('data-page-id');
+            if (pageId) {
+                console.log('Page button clicked, navigating to page:', pageId);
+                navigateToPage(pageId);
+            }
+        });
+    });
+    
     // Setup event listeners for the login form
     const loginForm = document.getElementById('login-form');
     if (loginForm) {
@@ -73,7 +91,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Setup drag and resize functionality
     setupDragAndResize();
     
-    setupEventDelegation();
+    console.log('Application initialization complete');
 });
 
 // Toggle between login and register forms
@@ -842,15 +860,27 @@ function renderPages(pages) {
     
     console.log('Rendering pages:', pages);
     
-    pagesNav.innerHTML = pages.map(page => `
-        <button 
-            class="btn ${currentPage === page.id ? 'btn-primary' : 'btn-outline-primary'} page-button mx-1"
-            onclick="navigateToPage('${page.id}')"
-            data-page-id="${page.id}"
-        >
-            ${page.name}
-        </button>
-    `).join('');
+    // Clear existing buttons first
+    pagesNav.innerHTML = '';
+    
+    // Create buttons programmatically instead of using inline onclick
+    pages.forEach(page => {
+        const button = document.createElement('button');
+        button.className = `btn ${currentPage === page.id ? 'btn-primary' : 'btn-outline-primary'} page-button mx-1`;
+        button.setAttribute('data-page-id', page.id);
+        button.textContent = page.name;
+        
+        // Add direct click handler for reliable navigation
+        button.addEventListener('click', function(e) {
+            e.preventDefault();
+            console.log('Navigation button clicked for:', page.id);
+            navigateToPage(page.id);
+        });
+        
+        pagesNav.appendChild(button);
+    });
+    
+    console.log('Page navigation buttons rendered');
 }
 
 function renderSnippets(snippets = [], navButtons = []) {
@@ -2659,227 +2689,9 @@ function setupGlobalHelpers() {
 
 // Ensure event delegation for dynamically created elements
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('Setting up event delegation for dynamic elements');
-    
-    // Delegate clicks on the document level for navigation buttons
-    document.addEventListener('click', function(e) {
-        // Handle navigation button clicks
-        if (e.target && e.target.matches('[data-page-id]')) {
-            const pageId = e.target.getAttribute('data-page-id');
-            navigateToPage(pageId);
-        }
-        
-        // Handle snippet edit button clicks
-        if (e.target && (e.target.matches('[onclick*="editSnippet"]') || 
-                         e.target.closest('[onclick*="editSnippet"]'))) {
-            const snippetElement = e.target.closest('.snippet');
-            if (snippetElement) {
-                const snippetId = parseInt(snippetElement.id.split('-')[1]);
-                editSnippet(snippetId);
-            }
-        }
-        
-        // Handle snippet delete button clicks
-        if (e.target && (e.target.matches('[onclick*="deleteSnippet"]') || 
-                         e.target.closest('[onclick*="deleteSnippet"]'))) {
-            const snippetElement = e.target.closest('.snippet');
-            if (snippetElement) {
-                const snippetId = parseInt(snippetElement.id.split('-')[1]);
-                deleteSnippet(snippetId);
-            }
-        }
-    });
-    
-    // Initialize global helper functions
-    setupGlobalHelpers();
+    console.log('Secondary initialization setup');
     
     // Initialize file download handler
     initializeFileDownloadHandler();
 });
-
-// Add this function to the setupGlobalHelpers function or call it in your document ready handler
-function setupEventDelegation() {
-    // Use event delegation for all dynamic elements
-    document.addEventListener('click', function(e) {
-        // Handle navigation button clicks
-        if (e.target.closest('.nav-button')) {
-            const button = e.target.closest('.nav-button');
-            const targetPage = button.dataset.targetPage;
-            if (targetPage) {
-                e.preventDefault();
-                navigateToPage(targetPage);
-                return;
-            }
-        }
-        
-        // Handle snippet edit button clicks
-        if (e.target.closest('.edit-snippet-btn')) {
-            const button = e.target.closest('.edit-snippet-btn');
-            const snippetId = button.dataset.snippetId;
-            if (snippetId) {
-                e.preventDefault();
-                editSnippet(snippetId);
-                return;
-            }
-        }
-        
-        // Handle snippet delete button clicks
-        if (e.target.closest('.delete-snippet-btn')) {
-            const button = e.target.closest('.delete-snippet-btn');
-            const snippetId = button.dataset.snippetId;
-            if (snippetId) {
-                e.preventDefault();
-                deleteSnippet(snippetId);
-                return;
-            }
-        }
-        
-        // Handle navigation button delete clicks
-        if (e.target.closest('.delete-nav-btn')) {
-            const button = e.target.closest('.delete-nav-btn');
-            const navId = button.dataset.navId;
-            if (navId) {
-                e.preventDefault();
-                if (confirm('Delete this navigation button?')) {
-                    deleteNavButton(navId);
-                }
-                return;
-            }
-        }
-    });
-
-    // Add double-click event listener for navigation button editing
-    document.addEventListener('dblclick', function(e) {
-        // Handle navigation button double-clicks for editing
-        if (e.target.closest('.draggable-nav-button')) {
-            const navElement = e.target.closest('.draggable-nav-button');
-            const navId = navElement.dataset.navId;
-            if (navId && currentUserRole === 'admin') {
-                e.preventDefault();
-                showNavButtonEditor(navId);
-                return;
-            }
-        }
-    });
-}
-
-// Update the initApp function to call setupEventDelegation
-async function initApp() {
-    // ... existing code ...
-    
-    // Add these lines before or after checking authentication
-    setupEventDelegation();
-    setupGlobalHelpers();
-    
-    // ... rest of existing initApp code ...
-}
-
-// Create a setupGlobalHelpers function if it doesn't exist
-function setupGlobalHelpers() {
-    // Make key functions accessible globally
-    window.navigateToPage = navigateToPage;
-    window.editSnippet = editSnippet;
-    window.deleteSnippet = deleteSnippet;
-    window.deleteNavButton = deleteNavButton;
-    window.showNavButtonEditor = showNavButtonEditor;
-    
-    // Additional helpers as needed
-    window.loadPageContent = loadPageContent;
-    window.renderSnippets = renderSnippets;
-    window.renderNavigationButtons = renderNavigationButtons;
-    
-    console.log('Global helpers are set up');
-}
-
-// Function to show editor for navigation buttons
-function showNavButtonEditor(navId) {
-    const navButton = navButtons.find(nav => nav.id === navId);
-    if (!navButton) return;
-    
-    // Create a temporary input to edit the button text
-    const navElement = document.querySelector(`.draggable-nav-button[data-nav-id="${navId}"]`);
-    if (!navElement) return;
-    
-    const buttonElement = navElement.querySelector('button');
-    const originalText = buttonElement.textContent;
-    
-    // Replace button with an input
-    const inputField = document.createElement('input');
-    inputField.type = 'text';
-    inputField.value = originalText;
-    inputField.className = 'nav-button-editor';
-    inputField.style.width = '100%';
-    inputField.style.height = '100%';
-    inputField.style.padding = '8px';
-    inputField.style.boxSizing = 'border-box';
-    
-    // Hide the button
-    buttonElement.style.display = 'none';
-    navElement.appendChild(inputField);
-    
-    // Focus the input
-    inputField.focus();
-    
-    // Handle saving on enter or blur
-    inputField.addEventListener('keydown', function(event) {
-        if (event.key === 'Enter') {
-            saveNavButtonText(navId, inputField.value);
-            cleanup();
-        } else if (event.key === 'Escape') {
-            cleanup();
-        }
-    });
-    
-    inputField.addEventListener('blur', function() {
-        saveNavButtonText(navId, inputField.value);
-        cleanup();
-    });
-    
-    function cleanup() {
-        // Show the button again
-        buttonElement.style.display = '';
-        
-        // Remove the input
-        if (inputField.parentNode) {
-            inputField.parentNode.removeChild(inputField);
-        }
-    }
-}
-
-// Function to save navigation button text
-async function saveNavButtonText(navId, newText) {
-    const navButton = navButtons.find(nav => nav.id === navId);
-    if (!navButton || newText === navButton.text) return;
-    
-    // Update in the local array
-    navButton.text = newText;
-    
-    // Update button text in DOM
-    const buttonElement = document.querySelector(`.draggable-nav-button[data-nav-id="${navId}"] button`);
-    if (buttonElement) {
-        buttonElement.textContent = newText;
-    }
-    
-    try {
-        // Save to server
-        const response = await fetch(`/api/navigation/${navId}`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('token')}`
-            },
-            body: JSON.stringify({ text: newText })
-        });
-        
-        if (!response.ok) {
-            throw new Error(`Failed to update navigation button: ${response.statusText}`);
-        }
-        
-        // Update successful
-        showAlert('success', 'Navigation button updated successfully');
-    } catch (error) {
-        console.error('Error updating navigation button:', error);
-        showAlert('error', 'Failed to update navigation button');
-    }
-}
   
