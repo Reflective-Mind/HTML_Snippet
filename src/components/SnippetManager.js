@@ -227,10 +227,20 @@ const SnippetManager = ({ onAddSnippet, onError }) => {
             if (!customCode.trim()) {
                 throw new Error('Snippet code cannot be empty');
             }
-            // Ensure custom snippet has basic structure
-            let formattedCode = customCode;
-            if (!customCode.includes('<div') && !customCode.includes('<section')) {
-                formattedCode = `<div class="custom-snippet">${customCode}</div>`;
+            
+            // Ensure custom snippet has basic structure with proper error handling
+            let formattedCode = customCode.trim();
+            
+            // Make sure custom code has a containing element
+            if (!formattedCode.includes('<div') && 
+                !formattedCode.includes('<section') && 
+                !formattedCode.includes('<article')) {
+                formattedCode = `<div class="custom-snippet">${formattedCode}</div>`;
+            }
+            
+            // Check for basic HTML validity
+            if (!formattedCode.includes('>')) {
+                throw new Error('Invalid HTML structure');
             }
             
             console.log('Adding custom snippet');
@@ -255,6 +265,7 @@ const SnippetManager = ({ onAddSnippet, onError }) => {
                         key={key}
                         className="btn btn-outline-primary me-2"
                         onClick={() => handleTemplateSelect(key)}
+                        title={`Add ${template.name} snippet`}
                     >
                         {template.name}
                     </button>
@@ -262,19 +273,20 @@ const SnippetManager = ({ onAddSnippet, onError }) => {
                 <button 
                     className="btn btn-primary"
                     onClick={() => setShowCustomModal(true)}
+                    title="Add custom HTML code"
                 >
                     Custom HTML
                 </button>
             </div>
 
-            {/* Template Modal */}
+            {/* Template Modal - We can keep this for future use but it's not used currently */}
             {showTemplateModal && (
                 <div className="modal show d-block">
                     <div className="modal-dialog">
                         <div className="modal-content">
                             <div className="modal-header">
                                 <h5 className="modal-title">
-                                    Add {SNIPPET_TEMPLATES[selectedTemplate].name}
+                                    Add {SNIPPET_TEMPLATES[selectedTemplate]?.name || 'Template'}
                                 </h5>
                                 <button 
                                     type="button" 
@@ -285,7 +297,7 @@ const SnippetManager = ({ onAddSnippet, onError }) => {
                             <div className="modal-body">
                                 <p>Add this snippet to your page?</p>
                                 <pre className="template-preview">
-                                    {SNIPPET_TEMPLATES[selectedTemplate].html}
+                                    {SNIPPET_TEMPLATES[selectedTemplate]?.html || ''}
                                 </pre>
                             </div>
                             <div className="modal-footer">
@@ -297,7 +309,12 @@ const SnippetManager = ({ onAddSnippet, onError }) => {
                                 </button>
                                 <button 
                                     className="btn btn-primary"
-                                    onClick={handleTemplateConfirm}
+                                    onClick={() => {
+                                        if (selectedTemplate && SNIPPET_TEMPLATES[selectedTemplate]) {
+                                            handleTemplateSelect(selectedTemplate);
+                                            setShowTemplateModal(false);
+                                        }
+                                    }}
                                 >
                                     Add Snippet
                                 </button>
@@ -321,13 +338,18 @@ const SnippetManager = ({ onAddSnippet, onError }) => {
                                 ></button>
                             </div>
                             <div className="modal-body">
+                                <div className="mb-3">
+                                    <small className="text-muted">
+                                        Enter your custom HTML code below. Make sure it's properly formatted.
+                                    </small>
+                                </div>
                                 <textarea
                                     className="form-control code-editor"
                                     rows="10"
                                     value={customCode}
                                     onChange={(e) => setCustomCode(e.target.value)}
                                     placeholder="Paste your HTML code here..."
-                                ></textarea>
+                                />
                             </div>
                             <div className="modal-footer">
                                 <button 
@@ -339,6 +361,7 @@ const SnippetManager = ({ onAddSnippet, onError }) => {
                                 <button 
                                     className="btn btn-primary"
                                     onClick={handleCustomSnippet}
+                                    disabled={!customCode.trim()}
                                 >
                                     Add Snippet
                                 </button>

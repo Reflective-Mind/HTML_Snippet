@@ -37,6 +37,14 @@ const SnippetContainer = ({
 
     // Initialize script content in the snippet after render
     useEffect(() => {
+        // Reset contentRendered state when snippet content changes
+        if (snippet.html) {
+            setContentRendered(false);
+        }
+    }, [snippet.html]);
+
+    // Execute scripts when the content is mounted or changes
+    useEffect(() => {
         if (contentRef.current && !contentRendered) {
             try {
                 // Initialize window functions if needed
@@ -44,44 +52,61 @@ const SnippetContainer = ({
                     window.isPreviewMode = true;
                 }
                 
-                // Clone the content div to work with it
-                const contentClone = contentRef.current.cloneNode(true);
+                // Get all scripts from the content
+                const scripts = contentRef.current.querySelectorAll('script:not([data-executed="true"])');
                 
-                // Execute scripts from HTML content
-                const scripts = contentClone.getElementsByTagName('script');
-                
-                // Create and append new script elements
-                Array.from(scripts).forEach(script => {
-                    const newScript = document.createElement('script');
+                if (scripts.length > 0) {
+                    console.log(`Executing ${scripts.length} scripts for snippet ${snippet.id}`);
                     
-                    // Copy all attributes
-                    Array.from(script.attributes).forEach(attr => {
-                        newScript.setAttribute(attr.name, attr.value);
+                    // Execute each script
+                    Array.from(scripts).forEach((script, index) => {
+                        const newScript = document.createElement('script');
+                        
+                        // Copy all attributes
+                        Array.from(script.attributes).forEach(attr => {
+                            newScript.setAttribute(attr.name, attr.value);
+                        });
+                        
+                        // Copy content
+                        newScript.textContent = script.textContent;
+                        
+                        // Mark as executed
+                        newScript.setAttribute('data-executed', 'true');
+                        newScript.setAttribute('data-snippet-id', snippet.id);
+                        
+                        // Replace original script or append to content
+                        if (script.parentNode) {
+                            script.parentNode.replaceChild(newScript, script);
+                        } else {
+                            contentRef.current.appendChild(newScript);
+                        }
+                        
+                        console.log(`Executed script ${index + 1} for snippet ${snippet.id}`);
                     });
-                    
-                    // Copy content
-                    newScript.innerHTML = script.innerHTML;
-                    
-                    // Mark as executed
-                    newScript.setAttribute('data-executed', 'true');
-                    
-                    // Replace original script
-                    if (script.parentNode) {
-                        script.parentNode.replaceChild(newScript, script);
-                    } else {
-                        // If somehow the script doesn't have a parent, append to document body
-                        document.body.appendChild(newScript);
-                    }
-                });
+                }
                 
                 setContentRendered(true);
-                console.log(`Scripts executed for snippet ${snippet.id}`);
+                console.log(`Content rendered for snippet ${snippet.id}`);
             } catch (err) {
                 console.error('Error initializing snippet content:', err);
-                if (onError) onError('Failed to initialize snippet content');
+                if (onError) onError(`Failed to initialize snippet content: ${err.message}`);
             }
         }
     }, [snippet.id, snippet.html, showPreview, contentRendered, onError]);
+
+    // Clean up scripts when component unmounts
+    useEffect(() => {
+        return () => {
+            // Remove any script elements added by this snippet
+            const snippetScripts = document.querySelectorAll(`script[data-snippet-id="${snippet.id}"]`);
+            snippetScripts.forEach(script => {
+                if (script.parentNode) {
+                    script.parentNode.removeChild(script);
+                }
+            });
+            console.log(`Cleaned up scripts for snippet ${snippet.id}`);
+        };
+    }, [snippet.id]);
 
     // Update local state when snippet prop changes
     useEffect(() => {

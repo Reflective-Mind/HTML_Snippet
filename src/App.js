@@ -341,36 +341,50 @@ const App = () => {
 
     // Set window variables for navigation from snippets with proper scope
     useEffect(() => {
-        // Make these functions available to snippets with immediate values
-        window.isPreviewMode = showPreview || isUser;
-        
-        // Create a closure with the current pages and current page
-        window.getAvailablePages = function() {
-            console.log('getAvailablePages called, returning:', pages.map(p => ({ id: p.id, name: p.name })));
-            return pages.map(p => ({ id: p.id, name: p.name }));
-        };
-        
-        window.navigateToPage = function(pageId) {
-            console.log('navigateToPage called with:', pageId);
-            if (pageId && pages.some(p => p.id === pageId)) {
+        // Create a unified navigation system that works consistently in both admin and user views
+        const setupNavigationFunctions = () => {
+            // Make these functions available to snippets with immediate values
+            window.isPreviewMode = showPreview || isUser;
+            
+            // Create a closure with the current pages and current page
+            window.getAvailablePages = function() {
+                // Create a clean copy of pages data to avoid exposing internal details
+                const availablePages = pages.map(p => ({ id: p.id, name: p.name }));
+                console.log('getAvailablePages called, returning:', availablePages);
+                return availablePages;
+            };
+            
+            window.navigateToPage = function(pageId) {
+                console.log('navigateToPage called with:', pageId);
+                if (!pageId || !pages.some(p => p.id === pageId)) {
+                    console.error(`Invalid page ID: ${pageId}`);
+                    return;
+                }
+                
+                // Consistently store the current page ID in localStorage
                 localStorage.setItem('currentPage', pageId);
                 
-                // For admin mode, use React state
+                // For both admin and user modes, update the React state
                 setCurrentPage(pageId);
                 
-                // Dispatch event for iframe content
+                // Dispatch navigation event for iframe content
                 window.dispatchEvent(new CustomEvent('navigationRequested', { 
                     detail: { pageId: pageId }
                 }));
                 
+                // For user view, add URL hash to support browser history
                 if (isUser) {
-                    // For user view, force page reload if needed
-                    // This helps with embedded content
                     window.location.hash = pageId;
                 }
-            }
+                
+                console.log(`Navigation to page ${pageId} complete`);
+            };
         };
         
+        // Set up navigation functions
+        setupNavigationFunctions();
+        
+        // Log initialization
         console.log('Window navigation functions initialized. Preview mode:', window.isPreviewMode);
         
         return () => {
@@ -378,6 +392,28 @@ const App = () => {
             console.log('App component unmounting, preserving window functions');
         };
     }, [pages, showPreview, isUser, currentPage]);
+
+    // Handle URL hash changes for direct navigation (browser back/forward buttons)
+    useEffect(() => {
+        const handleHashChange = () => {
+            const pageId = window.location.hash.replace('#', '');
+            if (pageId && pages.some(p => p.id === pageId)) {
+                console.log(`Hash changed to #${pageId}, navigating...`);
+                setCurrentPage(pageId);
+            }
+        };
+        
+        window.addEventListener('hashchange', handleHashChange);
+        
+        // Check initial hash on load
+        if (window.location.hash) {
+            handleHashChange();
+        }
+        
+        return () => {
+            window.removeEventListener('hashchange', handleHashChange);
+        };
+    }, [pages]);
 
     return (
         <div className="app-container">

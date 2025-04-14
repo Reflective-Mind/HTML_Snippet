@@ -14,38 +14,82 @@ const PageManager = ({
     const [editingPage, setEditingPage] = useState(null);
     const [defaultPage, setDefaultPage] = useState(localStorage.getItem('defaultPage') || 'home');
 
+    // Generate a valid, unique page ID from a name
+    const generatePageId = (pageName) => {
+        if (!pageName) return '';
+        
+        // Start with basic slugification
+        let pageId = pageName.toLowerCase()
+            .replace(/[^\w\s-]/g, '') // Remove special characters
+            .replace(/\s+/g, '-')     // Replace spaces with hyphens
+            .replace(/-+/g, '-')      // Remove multiple hyphens
+            .trim();
+            
+        // Make sure it's unique
+        let uniqueId = pageId;
+        let counter = 1;
+        
+        while (pages.some(p => p.id === uniqueId)) {
+            uniqueId = `${pageId}-${counter}`;
+            counter++;
+        }
+        
+        return uniqueId;
+    };
+
     const handlePageAdd = () => {
         if (isUserView || !onPageAdd) return;
         
         const pageName = prompt('Enter page name:');
-        if (pageName) {
-            try {
-                const pageId = pageName.toLowerCase().replace(/\s+/g, '-');
-                if (pages.some(p => p.id === pageId)) {
-                    throw new Error('Page with this name already exists');
-                }
-                onPageAdd({ id: pageId, name: pageName, snippets: [] });
-            } catch (err) {
-                onError(err.message);
+        if (!pageName?.trim()) return;
+        
+        try {
+            if (pageName.trim().length < 2) {
+                throw new Error('Page name must be at least 2 characters');
             }
+            
+            const pageId = generatePageId(pageName);
+            
+            if (!pageId) {
+                throw new Error('Invalid page name');
+            }
+            
+            console.log(`Creating new page: ${pageName} (${pageId})`);
+            onPageAdd({ id: pageId, name: pageName.trim(), snippets: [] });
+        } catch (err) {
+            onError(err.message);
         }
     };
 
     const handlePageEdit = (page) => {
         if (isUserView) return;
         
-        setEditingPage(page);
+        setEditingPage({...page}); // Clone the page to avoid direct state mutation
         setShowSettings(true);
     };
 
     const handlePageUpdate = () => {
-        if (isUserView || !onPageUpdate) return;
+        if (isUserView || !onPageUpdate || !editingPage) return;
         
         try {
-            if (!editingPage.name.trim()) {
+            const trimmedName = editingPage.name.trim();
+            
+            if (!trimmedName) {
                 throw new Error('Page name cannot be empty');
             }
-            onPageUpdate(editingPage);
+            
+            if (trimmedName.length < 2) {
+                throw new Error('Page name must be at least 2 characters');
+            }
+            
+            // Create updated page object with trimmed name
+            const updatedPage = {
+                ...editingPage,
+                name: trimmedName
+            };
+            
+            console.log(`Updating page: ${updatedPage.id} to name: ${trimmedName}`);
+            onPageUpdate(updatedPage);
             setShowSettings(false);
             setEditingPage(null);
         } catch (err) {
@@ -59,6 +103,7 @@ const PageManager = ({
         setDefaultPage(pageId);
         // Update in localStorage or backend
         localStorage.setItem('defaultPage', pageId);
+        console.log(`Default page set to: ${pageId}`);
     };
 
     return (
@@ -71,6 +116,7 @@ const PageManager = ({
                                 <button
                                     onClick={() => onPageChange(page.id)}
                                     className={`btn ${currentPage === page.id ? 'btn-primary' : 'btn-outline-primary'}`}
+                                    title={`View ${page.name} page`}
                                 >
                                     {page.name}
                                 </button>
@@ -85,7 +131,11 @@ const PageManager = ({
                                 )}
                                 {!isUserView && page.id !== 'home' && onPageRemove && (
                                     <button
-                                        onClick={() => onPageRemove(page.id)}
+                                        onClick={() => {
+                                            if (window.confirm(`Are you sure you want to delete the page "${page.name}"?`)) {
+                                                onPageRemove(page.id);
+                                            }
+                                        }}
                                         className="btn btn-danger btn-sm ms-1"
                                         title="Delete page"
                                     >
@@ -146,7 +196,15 @@ const PageManager = ({
                                                 ...editingPage,
                                                 name: e.target.value
                                             })}
+                                            placeholder="Enter page name"
+                                            minLength="2"
+                                            maxLength="50"
                                         />
+                                        <small className="text-muted">
+                                            {editingPage.id === 'home' ? 
+                                                'This is your home page and cannot be deleted.' : 
+                                                `Page ID: ${editingPage.id}`}
+                                        </small>
                                     </div>
                                 ) : (
                                     <div className="mb-3">
@@ -162,6 +220,9 @@ const PageManager = ({
                                                 </option>
                                             ))}
                                         </select>
+                                        <small className="text-muted">
+                                            This is the page users will see when they first visit your site.
+                                        </small>
                                     </div>
                                 )}
                             </div>
@@ -179,6 +240,7 @@ const PageManager = ({
                                     <button 
                                         className="btn btn-primary"
                                         onClick={handlePageUpdate}
+                                        disabled={!editingPage.name.trim() || editingPage.name.trim().length < 2}
                                     >
                                         Save Changes
                                     </button>
