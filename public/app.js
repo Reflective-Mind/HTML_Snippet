@@ -8,6 +8,9 @@ let isResizing = false;
 let updateTimeout = null;
 let navButtons = [];
 
+// API base URL - this is critical for API calls to work correctly
+const API_BASE_URL = 'https://mbti-render.onrender.com';
+
 // DOM Elements - these will be initialized when the DOM is loaded
 let loginForm;
 let registerForm;
@@ -256,8 +259,8 @@ async function login(email, password) {
             return false;
         }
         
-        console.log('Making login request to /api/login');
-        const response = await fetch('/api/login', {
+        console.log('Making login request to API_BASE_URL + /api/login');
+        const response = await fetch(`${API_BASE_URL}/api/login`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -459,7 +462,7 @@ async function register(email, password) {
             throw new Error('Username is required');
         }
 
-        const response = await fetch('/api/register', {
+        const response = await fetch(`${API_BASE_URL}/api/register`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -491,7 +494,11 @@ async function register(email, password) {
 // API calls with error handling
 async function makeRequest(url, options = {}) {
     try {
-        const response = await fetch(url, {
+        // Make sure to use the full URL with the API base
+        const fullUrl = url.startsWith('http') ? url : `${API_BASE_URL}${url}`;
+        console.log('Making API request to:', fullUrl);
+        
+        const response = await fetch(fullUrl, {
             ...options,
             headers: {
                 ...options.headers,

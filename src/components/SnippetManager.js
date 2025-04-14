@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 
 const SNIPPET_TEMPLATES = {
     'nav-menu': {
@@ -86,7 +86,10 @@ const SNIPPET_TEMPLATES = {
 
                     // Function to populate pages in select
                     function populatePages() {
-                        fetch('/api/pages')
+                        // Use the API base URL 
+                        const API_BASE_URL = window.API_BASE_URL || 'https://mbti-render.onrender.com';
+                        
+                        fetch(`${API_BASE_URL}/api/pages`)
                             .then(response => response.json())
                             .then(pages => {
                                 select.innerHTML = pages.map(page => 
@@ -179,8 +182,40 @@ const SnippetManager = ({ onAddSnippet, onError }) => {
     const [showTemplateModal, setShowTemplateModal] = useState(false);
     const [showCustomModal, setShowCustomModal] = useState(false);
 
-    const handleTemplateSelect = (template) => {
+    // Validate HTML code for safety and structure
+    const validateHtml = useCallback((htmlCode) => {
+        if (!htmlCode || typeof htmlCode !== 'string') {
+            throw new Error('HTML code must be a non-empty string');
+        }
+        
+        // Check for basic HTML validity (presence of opening/closing tags)
+        if (!htmlCode.includes('>')) {
+            throw new Error('Invalid HTML structure: missing tag closure');
+        }
+        
+        // Make sure custom code has a containing element
+        let formattedCode = htmlCode.trim();
+        
+        // Check if code has a container element
+        const hasContainer = formattedCode.includes('<div') || 
+            formattedCode.includes('<section') || 
+            formattedCode.includes('<article');
+        
+        // If no container, wrap in a div
+        if (!hasContainer) {
+            formattedCode = `<div class="custom-snippet">${formattedCode}</div>`;
+        }
+        
+        return formattedCode;
+    }, []);
+
+    // Handle template selection with better error handling
+    const handleTemplateSelect = useCallback((template) => {
         try {
+            if (!template || typeof template !== 'string') {
+                throw new Error('Invalid template selection');
+            }
+            
             console.log(`Selecting template: ${template}`);
             
             // Get the template data
@@ -188,6 +223,9 @@ const SnippetManager = ({ onAddSnippet, onError }) => {
             if (!templateData) {
                 throw new Error(`Template not found: ${template}`);
             }
+            
+            // Validate template HTML
+            validateHtml(templateData.html);
             
             console.log(`Adding template: ${template} (${templateData.name})`);
             
@@ -201,47 +239,17 @@ const SnippetManager = ({ onAddSnippet, onError }) => {
             console.error('Error adding template:', err);
             onError(`Failed to add template: ${err.message}`);
         }
-    };
+    }, [onAddSnippet, onError, validateHtml]);
 
-    const handleTemplateConfirm = () => {
-        try {
-            console.log(`Adding template: ${selectedTemplate}`);
-            const template = SNIPPET_TEMPLATES[selectedTemplate];
-            if (!template) {
-                throw new Error(`Template "${selectedTemplate}" not found`);
-            }
-            
-            onAddSnippet({
-                html: template.html,
-                size: template.defaultSize
-            });
-            setShowTemplateModal(false);
-        } catch (err) {
-            console.error('Error adding template snippet:', err);
-            onError('Failed to add template snippet');
-        }
-    };
-
-    const handleCustomSnippet = () => {
+    // Handle custom snippet creation with improved validation
+    const handleCustomSnippet = useCallback(() => {
         try {
             if (!customCode.trim()) {
                 throw new Error('Snippet code cannot be empty');
             }
             
-            // Ensure custom snippet has basic structure with proper error handling
-            let formattedCode = customCode.trim();
-            
-            // Make sure custom code has a containing element
-            if (!formattedCode.includes('<div') && 
-                !formattedCode.includes('<section') && 
-                !formattedCode.includes('<article')) {
-                formattedCode = `<div class="custom-snippet">${formattedCode}</div>`;
-            }
-            
-            // Check for basic HTML validity
-            if (!formattedCode.includes('>')) {
-                throw new Error('Invalid HTML structure');
-            }
+            // Validate and format custom code
+            const formattedCode = validateHtml(customCode.trim());
             
             console.log('Adding custom snippet');
             onAddSnippet({
@@ -254,7 +262,7 @@ const SnippetManager = ({ onAddSnippet, onError }) => {
             console.error('Error adding custom snippet:', err);
             onError(err.message);
         }
-    };
+    }, [customCode, onAddSnippet, onError, validateHtml]);
 
     return (
         <div className="snippet-manager">
@@ -279,51 +287,6 @@ const SnippetManager = ({ onAddSnippet, onError }) => {
                 </button>
             </div>
 
-            {/* Template Modal - We can keep this for future use but it's not used currently */}
-            {showTemplateModal && (
-                <div className="modal show d-block">
-                    <div className="modal-dialog">
-                        <div className="modal-content">
-                            <div className="modal-header">
-                                <h5 className="modal-title">
-                                    Add {SNIPPET_TEMPLATES[selectedTemplate]?.name || 'Template'}
-                                </h5>
-                                <button 
-                                    type="button" 
-                                    className="btn-close"
-                                    onClick={() => setShowTemplateModal(false)}
-                                ></button>
-                            </div>
-                            <div className="modal-body">
-                                <p>Add this snippet to your page?</p>
-                                <pre className="template-preview">
-                                    {SNIPPET_TEMPLATES[selectedTemplate]?.html || ''}
-                                </pre>
-                            </div>
-                            <div className="modal-footer">
-                                <button 
-                                    className="btn btn-secondary"
-                                    onClick={() => setShowTemplateModal(false)}
-                                >
-                                    Cancel
-                                </button>
-                                <button 
-                                    className="btn btn-primary"
-                                    onClick={() => {
-                                        if (selectedTemplate && SNIPPET_TEMPLATES[selectedTemplate]) {
-                                            handleTemplateSelect(selectedTemplate);
-                                            setShowTemplateModal(false);
-                                        }
-                                    }}
-                                >
-                                    Add Snippet
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
             {/* Custom Code Modal */}
             {showCustomModal && (
                 <div className="modal show d-block">
@@ -335,6 +298,7 @@ const SnippetManager = ({ onAddSnippet, onError }) => {
                                     type="button" 
                                     className="btn-close"
                                     onClick={() => setShowCustomModal(false)}
+                                    aria-label="Close"
                                 ></button>
                             </div>
                             <div className="modal-body">
@@ -349,6 +313,7 @@ const SnippetManager = ({ onAddSnippet, onError }) => {
                                     value={customCode}
                                     onChange={(e) => setCustomCode(e.target.value)}
                                     placeholder="Paste your HTML code here..."
+                                    aria-label="Custom HTML editor"
                                 />
                             </div>
                             <div className="modal-footer">
