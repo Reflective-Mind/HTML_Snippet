@@ -119,18 +119,25 @@ mongoose.set('strictQuery', true); // Suppress strictQuery warning
 
 // Authentication middleware
 const authenticateUser = (req, res, next) => {
-        const token = req.headers.authorization?.split(' ')[1];
-        
-        if (!token) {
-            return res.status(401).json({ message: 'No token provided' });
-        }
+    const token = req.headers.authorization?.split(' ')[1];
+    
+    if (!token) {
+        console.log('❌ No token provided for request');
+        return res.status(401).json({ message: 'No token provided' });
+    }
 
     try {
+        if (!process.env.JWT_SECRET) {
+            console.error('❌ JWT_SECRET is not defined in environment variables!');
+            return res.status(500).json({ message: 'Server configuration error' });
+        }
+        
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-            req.user = decoded;
-            next();
+        console.log('✅ Successfully authenticated user:', decoded.email);
+        req.user = decoded;
+        next();
     } catch (error) {
-        console.error('Token verification failed:', error);
+        console.error('❌ Token verification failed:', error);
         return res.status(401).json({ message: 'Invalid token' });
     }
 };
@@ -245,42 +252,43 @@ async function connectToMongoDB() {
         await mongoose.connect(process.env.MONGODB_URI, {
             useNewUrlParser: true,
             useUnifiedTopology: true,
-            serverSelectionTimeoutMS: 15000, // Increased timeout
+            serverSelectionTimeoutMS: 15000,
             heartbeatFrequencyMS: 10000,
-            dbName: process.env.DB_NAME || 'html-snippet-builder',  // Explicitly set database name
+            dbName: process.env.DB_NAME || 'html-snippet-builder',
             retryWrites: true,
             w: 'majority',
-            maxPoolSize: 10, // Reduced for serverless
-            socketTimeoutMS: 30000, // Reduced for serverless
+            maxPoolSize: 10,
+            socketTimeoutMS: 30000,
         });
 
         console.log('✅ Connected to MongoDB successfully');
         mongoConnected = true;
         
-        // Create default users after successful connection
-        await ensureDefaultUserExists();
-        
-        // Initialize settings and default channels
-        console.log('Initializing settings and default channels...');
-        await initializeSettings();
-        await initializeChannels();
-        
-        // Verify collections exist
-        const collections = await mongoose.connection.db.listCollections().toArray();
-        const collectionNames = collections.map(c => c.name);
-        console.log('📚 Available collections:', collectionNames);
-
-        // Print database status
-        const users = await User.countDocuments();
-        const pages = await Page.countDocuments();
-        const settings = await Settings.countDocuments();
-        
-        console.log('📊 Database Status:');
-        console.log(`- Users: ${users}`);
-        console.log(`- Pages: ${pages}`);
-        console.log(`- Settings: ${settings}`);
-        
-        console.log('\n✨ Server ready to use!');
+        // Create default users and check MongoDB connection before proceeding
+        try {
+            // Check if JWT_SECRET is set
+            if (!process.env.JWT_SECRET) {
+                console.error('❌ WARNING: JWT_SECRET is not set in environment variables!');
+                process.env.JWT_SECRET = 'cd06a943f7e3a56b2f7c8836736c0d6f2e3b58f9c742a563'; // Default fallback secret
+                console.log('✓ Set default JWT_SECRET as fallback');
+            }
+            
+            // Ensure default users exist
+            await ensureDefaultUserExists();
+            console.log('✓ User verification complete');
+            
+            // Initialize other configuration
+            await initializeSettings();
+            await initializeChannels();
+            
+            // Print database status
+            const collections = await mongoose.connection.db.listCollections().toArray();
+            console.log('📚 Available collections:', collections.map(c => c.name));
+            
+            console.log('✨ Server setup complete and ready to use!');
+        } catch (initError) {
+            console.error('❌ Error during initialization:', initError);
+        }
     } catch (error) {
         console.error('❌ MongoDB connection error:', error);
         console.error('Stack:', error.stack);
@@ -674,28 +682,28 @@ app.post('/api/register', async (req, res) => {
     }
 });
 
-// Get all pages
-app.get('/api/pages', authenticateUser, async (req, res) => {
+// Get all pages - make accessible without authentication
+app.get('/api/pages', async (req, res) => {
   try {
-    console.log('Fetching all pages');
+    console.log('🔍 Fetching all pages');
     const pages = await Page.find().sort({ order: 1 });
-    console.log(`Returning ${pages.length} pages`);
+    console.log(`✅ Returning ${pages.length} pages`);
     res.json(pages);
   } catch (error) {
-    console.error('Error fetching pages:', error);
+    console.error('❌ Error fetching pages:', error);
     res.status(500).json({ message: 'Failed to fetch pages', error: error.message });
   }
 });
 
-// Get page by ID
-app.get('/api/pages/:id', authenticateUser, async (req, res) => {
+// Get page by ID - make accessible without authentication
+app.get('/api/pages/:id', async (req, res) => {
   try {
     const pageId = req.params.id;
-    console.log('Fetching page:', pageId);
+    console.log('🔍 Fetching page:', pageId);
     
     const page = await Page.findOne({ id: pageId });
     if (!page) {
-      console.log('Page not found:', pageId);
+      console.log('❌ Page not found:', pageId);
       return res.status(404).json({ message: 'Page not found' });
     }
     
@@ -704,7 +712,7 @@ app.get('/api/pages/:id', authenticateUser, async (req, res) => {
     pageInfo.snippetCount = page.snippets ? page.snippets.length : 0;
     pageInfo.navButtonCount = page.navButtons ? page.navButtons.length : 0;
     
-    console.log('Returning page:', { 
+    console.log('✅ Returning page:', { 
       id: pageInfo.id, 
       name: pageInfo.name, 
       snippetCount: pageInfo.snippetCount,
@@ -713,7 +721,7 @@ app.get('/api/pages/:id', authenticateUser, async (req, res) => {
     
     res.json(pageInfo);
   } catch (error) {
-    console.error('Error fetching page:', error);
+    console.error('❌ Error fetching page:', error);
     res.status(500).json({ message: 'Failed to fetch page', error: error.message });
   }
 });
@@ -2225,6 +2233,7 @@ if (process.env.NODE_ENV !== 'vercel') {
 
 // Adding a default user if needed
 async function ensureDefaultUserExists() {
+    console.log('👤 Checking default users...');
     try {
         // Check if admin user exists
         const adminExists = await User.findOne({ email: process.env.ADMIN_EMAIL || 'eideken@hotmail.com' });
@@ -2240,6 +2249,8 @@ async function ensureDefaultUserExists() {
             });
             await adminUser.save();
             console.log('✅ Default admin user created successfully');
+        } else {
+            console.log('✅ Admin user already exists');
         }
 
         // Check if regular user exists
@@ -2256,8 +2267,11 @@ async function ensureDefaultUserExists() {
             });
             await regularUser.save();
             console.log('✅ Default regular user created successfully');
+        } else {
+            console.log('✅ Regular user already exists');
         }
     } catch (error) {
         console.error('❌ Error ensuring default users exist:', error);
+        throw error; // Re-throw to be caught by the parent function
     }
 }

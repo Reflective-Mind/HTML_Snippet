@@ -5,8 +5,8 @@ import PageManager from './components/PageManager';
 import SnippetContainer from './components/SnippetContainer';
 
 const App = () => {
-    const [isAdmin, setIsAdmin] = useState(false);
-    const [isUser, setIsUser] = useState(false);
+    const [isAdmin, setIsAdmin] = useState(localStorage.getItem('isAdmin') === 'true');
+    const [isUser, setIsUser] = useState(localStorage.getItem('isUser') === 'true');
     const [pages, setPages] = useState([{ id: 'home', name: 'Home', snippets: [] }]);
     const [currentPage, setCurrentPage] = useState(localStorage.getItem('defaultPage') || 'home');
     const [email, setEmail] = useState('');
@@ -37,7 +37,9 @@ const App = () => {
                 if (error.response?.status === 401 && retryCount < 3) {
                     localStorage.removeItem('token');
                     localStorage.removeItem('isAdmin');
+                    localStorage.removeItem('isUser');
                     setIsAdmin(false);
+                    setIsUser(false);
                     setError('Session expired. Please login again.');
                     setRetryCount(count => count + 1);
                 } else if (error.response?.status === 503 && retryCount < 3) {
@@ -55,6 +57,7 @@ const App = () => {
             try {
                 await axios.get('/api/health');
             } catch (err) {
+                console.error('Server health check failed:', err);
                 setError('Server connection issue. Please try again later.');
             }
         };
@@ -64,6 +67,18 @@ const App = () => {
             setRetryCount(0);
         };
     }, [retryCount]);
+
+    // Initialize login if tokens are stored
+    useEffect(() => {
+        const token = localStorage.getItem('token');
+        const isAdmin = localStorage.getItem('isAdmin') === 'true';
+        const isUser = localStorage.getItem('isUser') === 'true';
+
+        if (token && (isAdmin || isUser)) {
+            console.log('Found existing token, attempting auto-login');
+            loadPages();
+        }
+    }, []);
 
     // Load pages from backend with retry logic
     useEffect(() => {
@@ -75,14 +90,16 @@ const App = () => {
     const loadPages = async () => {
         try {
             setLoading(true);
+            console.log('Loading pages...');
             const response = await axios.get('/api/pages');
+            console.log('Pages loaded:', response.data);
             if (response.data.length > 0) {
                 setPages(response.data);
             }
             setError('');
         } catch (err) {
-            setError('Failed to load pages. Please refresh the page.');
-            console.error(err);
+            console.error('Failed to load pages:', err);
+            setError('Failed to load pages. Please try again or refresh.');
         } finally {
             setLoading(false);
         }
@@ -91,29 +108,52 @@ const App = () => {
     // Enhanced login with support for both admin and regular users
     const handleLogin = async (e) => {
         e.preventDefault();
+        
+        if (!email || !password) {
+            setError('Email and password are required');
+            return;
+        }
+        
         try {
             setLoading(true);
+            setError('');
+            
+            console.log('Attempting login for:', email);
             const response = await axios.post('/api/login', { email, password });
             const { token, role } = response.data;
+            
+            if (!token) {
+                throw new Error('No token received from server');
+            }
+            
             localStorage.setItem('token', token);
             
             if (role === 'admin') {
                 localStorage.setItem('isAdmin', 'true');
+                localStorage.removeItem('isUser');
                 setIsAdmin(true);
                 setIsUser(false);
+                console.log('Logged in as admin');
             } else {
                 localStorage.setItem('isUser', 'true');
+                localStorage.removeItem('isAdmin');
                 setIsUser(true);
                 setIsAdmin(false);
+                console.log('Logged in as regular user');
             }
             
-            setError('');
             setRetryCount(0);
+            // Clear form fields
+            setEmail('');
+            setPassword('');
         } catch (err) {
+            console.error('Login error:', err);
             if (err.response?.status === 429) {
                 setError('Too many login attempts. Please try again later.');
+            } else if (err.response?.status === 401) {
+                setError('Invalid email or password');
             } else {
-                setError('Invalid credentials');
+                setError('Login failed. Please try again.');
             }
         } finally {
             setLoading(false);

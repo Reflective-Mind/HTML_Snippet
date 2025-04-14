@@ -117,7 +117,7 @@
     background-color: #0069d9;
 }
 
-/* Fixed admin toolbar that doesn't overlap content */
+/* Fixed admin toolbar at the top */
 #admin-toolbar,
 .admin-toolbar {
     position: fixed;
@@ -149,6 +149,7 @@
     align-items: center;
 }
 
+/* Page navigation below the toolbar */
 #pages-nav,
 .page-manager .page-navigation {
     position: fixed;
@@ -156,7 +157,7 @@
     left: 0;
     right: 0;
     padding: 10px;
-    background: #f8f9fa;
+    background: #fff; /* Changed to white for better contrast */
     border-bottom: 1px solid #dee2e6;
     z-index: 900;
     height: 60px; /* Fixed height for nav */
@@ -164,12 +165,12 @@
     align-items: center;
 }
 
-/* Adjust content area to account for fixed header elements */
+/* Content area with sufficient margin to avoid toolbar overlap */
 .content-area,
 .page-content {
-    margin-top: 130px; /* Toolbar (60px) + Page nav (60px) + margin (10px) */
+    margin-top: 140px; /* Increased margin - Toolbar (60px) + Page nav (60px) + margin (20px) */
     padding: 20px;
-    min-height: calc(100vh - 150px);
+    min-height: calc(100vh - 180px); /* Adjusted for header height */
     position: relative;
     background: #fff;
     border: 1px solid #e9ecef;
@@ -281,12 +282,14 @@
     margin: 20px;
 }
 
-/* Snippet manager styles */
+/* Snippet manager container */
 .snippet-manager {
     display: flex;
+    flex-wrap: wrap; /* Allow wrapping on small screens */
     align-items: center;
     gap: 10px;
     margin-right: 20px;
+    max-width: calc(100% - 300px); /* Leave space for other toolbar items */
 }
 
 .template-buttons {
@@ -388,4 +391,39 @@
     font-size: 24px;
     font-weight: bold;
     color: #007bff;
+}
+
+/* Ensure snippet container is positioned relative to page content */
+.snippet-container {
+    position: absolute;
+    z-index: 10;
+}
+
+/* Preview mode styles */
+.preview-mode .page-content {
+    background-color: #f5f5f5; /* Light gray background to differentiate preview mode */
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .snippet-manager {
+        max-width: 100%;
+    }
+    
+    .admin-toolbar,
+    .user-toolbar {
+        height: auto;
+        flex-wrap: wrap;
+        padding: 5px;
+    }
+    
+    .page-manager .page-navigation {
+        height: auto;
+        flex-wrap: wrap;
+    }
+    
+    .content-area,
+    .page-content {
+        margin-top: 160px; /* Adjusted for potential wrap */
+    }
 } 

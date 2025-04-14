@@ -16,9 +16,11 @@ const SnippetContainer = ({
     // Ensure snippet has proper position and size
     useEffect(() => {
         if (!snippet.position) {
+            console.log('No position found for snippet, using default');
             snippet.position = { x: 0, y: 0 };
         }
         if (!snippet.size) {
+            console.log('No size found for snippet, using default');
             snippet.size = { width: 300, height: 200 };
         }
     }, [snippet]);
@@ -34,7 +36,7 @@ const SnippetContainer = ({
             document.removeEventListener('mousemove', handleMouseMove);
             document.removeEventListener('mouseup', handleMouseUp);
         };
-    }, [isDragging, isResizing, showPreview]);
+    }, [isDragging, isResizing, showPreview, onUpdate]);
 
     const snapToGrid = (value) => Math.round(value / gridSize) * gridSize;
 
@@ -42,6 +44,7 @@ const SnippetContainer = ({
         if (showPreview || !onUpdate) return;
 
         e.preventDefault();
+        e.stopPropagation();
         const rect = containerRef.current.getBoundingClientRect();
 
         if (action === 'drag') {
@@ -96,8 +99,8 @@ const SnippetContainer = ({
                 const newHeight = snapToGrid(Math.max(100, startSize.height + deltaHeight));
 
                 // Ensure the snippet stays within the parent container
-                const maxWidth = parentRect.width - snippet.position.x;
-                const maxHeight = parentRect.height - snippet.position.y;
+                const maxWidth = Math.max(300, parentRect.width - snippet.position.x - 20);
+                const maxHeight = Math.max(200, parentRect.height - snippet.position.y - 20);
 
                 onUpdate(snippet.id, {
                     size: {
@@ -107,6 +110,7 @@ const SnippetContainer = ({
                 });
             }
         } catch (err) {
+            console.error('Error updating snippet:', err);
             if (onError) onError('Failed to update snippet position/size');
             setIsDragging(false);
             setIsResizing(false);
@@ -132,24 +136,70 @@ const SnippetContainer = ({
                 top: safePosition.y,
                 width: safeSize.width,
                 height: safeSize.height,
-                cursor: (!showPreview && onUpdate) ? (isDragging ? 'grabbing' : 'grab') : 'default'
+                border: showPreview ? 'none' : '1px solid #ccc',
+                background: 'white',
+                padding: '10px',
+                boxShadow: isDragging ? '0 5px 15px rgba(0,0,0,0.3)' : '0 2px 5px rgba(0,0,0,0.1)',
+                borderRadius: '4px',
+                cursor: (!showPreview && onUpdate) ? (isDragging ? 'grabbing' : 'grab') : 'default',
+                transition: 'box-shadow 0.3s ease'
             }}
-            onMouseDown={onUpdate ? (e) => handleMouseDown(e, 'drag') : undefined}
+            onMouseDown={(!showPreview && onUpdate) ? (e) => handleMouseDown(e, 'drag') : undefined}
         >
             <div 
                 className="snippet-content"
+                style={{
+                    width: '100%',
+                    height: '100%',
+                    overflow: 'hidden',
+                    position: 'relative'
+                }}
                 dangerouslySetInnerHTML={{ __html: snippet.html }} 
             />
             {!showPreview && onUpdate && (
-                <div className="snippet-controls">
+                <div 
+                    className="snippet-controls"
+                    style={{
+                        position: 'absolute',
+                        top: '5px',
+                        right: '5px',
+                        display: 'flex',
+                        gap: '5px',
+                        background: 'rgba(255,255,255,0.9)',
+                        padding: '5px',
+                        borderRadius: '4px',
+                        zIndex: 100,
+                        boxShadow: '0 2px 5px rgba(0,0,0,0.2)'
+                    }}
+                >
                     <button
                         className="edit-button"
+                        style={{
+                            background: '#007bff',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '3px',
+                            padding: '3px 8px',
+                            fontSize: '12px',
+                            cursor: 'pointer'
+                        }}
                         onClick={() => onUpdate(snippet.id, { isEditing: true })}
                     >
                         Edit
                     </button>
                     <div 
-                        className="snippet-resize-handle"
+                        className="resize-handle"
+                        style={{
+                            position: 'absolute',
+                            bottom: '-10px',
+                            right: '-10px',
+                            width: '20px',
+                            height: '20px',
+                            cursor: 'se-resize',
+                            background: 'linear-gradient(135deg, transparent 50%, #007bff 50%)',
+                            borderRadius: '0 0 4px 0',
+                            opacity: 0.7
+                        }}
                         onMouseDown={(e) => handleMouseDown(e, 'resize')}
                     />
                 </div>
