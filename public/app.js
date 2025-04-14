@@ -494,36 +494,103 @@ async function register(email, password) {
 // API calls with error handling
 async function makeRequest(url, options = {}) {
     try {
-        // Make sure to use the full URL with the API base
-        const fullUrl = url.startsWith('http') ? url : `${API_BASE_URL}${url}`;
+        // Add base URL if it's a relative path
+        const fullUrl = url.startsWith('http') ? url : window.API_BASE_URL + url;
         console.log('Making API request to:', fullUrl);
         
-        const response = await fetch(fullUrl, {
-            ...options,
-            headers: {
-                ...options.headers,
-                'Authorization': `Bearer ${token}`,
+        // Set default headers
+        if (!options.headers) {
+            options.headers = {
                 'Content-Type': 'application/json'
-            }
-        });
-
-        if (!response.ok) {
+            };
+        }
+        
+        // Add auth token if available
+        const token = localStorage.getItem('token');
+        if (token) {
+            options.headers.Authorization = `Bearer ${token}`;
+        }
+        
+        // Handle request timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+        
+        try {
+            options.signal = controller.signal;
+            const response = await fetch(fullUrl, options);
+            
+            // Clear timeout
+            clearTimeout(timeoutId);
+            
+            // Handle common HTTP errors
             if (response.status === 401) {
-                // Token expired or invalid
-                token = null;
-                userRole = null;
                 localStorage.removeItem('token');
                 localStorage.removeItem('userRole');
+                showAlert('Session expired. Please login again.', 'warning');
                 updateView();
-                throw new Error('Session expired. Please login again.');
+                throw new Error('Session expired');
             }
-            const error = await response.json().catch(() => ({ message: response.statusText }));
-            throw new Error(error.message || 'Request failed');
+            
+            if (response.status === 404) {
+                // Special handling for page not found
+                if (url.includes('/api/pages/')) {
+                    const pageId = url.split('/').pop();
+                    console.log(`Page ${pageId} not found, attempting to create it if it's a valid ID`);
+                    
+                    if (pageId === 'home' || /^[a-z0-9-]+$/.test(pageId)) {
+                        try {
+                            // Try to create the page as a fallback
+                            const pageName = pageId.charAt(0).toUpperCase() + pageId.slice(1).replace(/-/g, ' ');
+                            return await createPage(pageName);
+                        } catch (createError) {
+                            console.error('Error creating fallback page:', createError);
+                        }
+                    }
+                }
+                throw new Error('Page not found');
+            }
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            // Parse JSON response if expected
+            try {
+                return await response.json();
+            } catch (e) {
+                // Return empty object if no content or not JSON
+                if (response.status === 204) {
+                    return {};
+                }
+                return await response.text();
+            }
+            
+        } catch (fetchError) {
+            clearTimeout(timeoutId);
+            
+            if (fetchError.name === 'AbortError') {
+                throw new Error('Request timed out. Please try again.');
+            }
+            
+            throw fetchError;
         }
-
-        return await response.json();
     } catch (error) {
         console.error('API request failed:', error);
+        
+        // For page requests, provide a fallback
+        if (url.includes('/api/pages')) {
+            if (url === '/api/pages') {
+                console.warn('Failed to load pages, using fallback home page');
+                return [{ id: 'home', name: 'Home', snippets: [] }];
+            } else {
+                const pageId = url.split('/').pop();
+                if (pageId === 'home') {
+                    console.warn('Failed to load home page, using fallback');
+                    return { id: 'home', name: 'Home', snippets: [] };
+                }
+            }
+        }
+        
         throw error;
     }
 }
@@ -673,41 +740,92 @@ async function loadPages() {
         if (!pages || !Array.isArray(pages)) {
             throw new Error('Invalid pages data received');
         }
+        
+        // If no pages exist, create a default home page
+        if (pages.length === 0) {
+            console.log('No pages found, creating default home page');
+            try {
+                await createPage('Home');
+                return loadPages(); // Retry loading pages after creating default
+            } catch (error) {
+                console.error('Failed to create default page:', error);
+                // Use a fallback page structure if we can't create one
+                const fallbackPage = [{ id: 'home', name: 'Home', snippets: [] }];
+                window.availablePages = fallbackPage;
+                renderPages(fallbackPage);
+                return fallbackPage;
+            }
+        }
+        
         window.availablePages = pages; // Store pages for navigation buttons
         renderPages(pages);
         return pages;
     } catch (error) {
-        showAlert(`Failed to load pages: ${error.message}`, 'danger');
         console.error('Load pages error:', error);
+        showAlert(`Failed to load pages: ${error.message}`, 'danger');
+        
         if (error.message.includes('Session expired')) {
             return [];
         }
+        
+        // Use a fallback page structure if we can't load pages
+        const fallbackPage = [{ id: 'home', name: 'Home', snippets: [] }];
+        window.availablePages = fallbackPage;
+        renderPages(fallbackPage);
+        return fallbackPage;
     }
 }
 
 async function createPage(name) {
     try {
-        const id = name.toLowerCase().replace(/\s+/g, '-');
+        // Generate a safe ID for the page
+        const id = name.toLowerCase() === 'home' ? 'home' : name.toLowerCase().replace(/\s+/g, '-');
+        
+        console.log(`Creating page: ${name} with ID: ${id}`);
         
         // Check if page exists first
-        const pages = await loadPages();
-        if (pages.some(p => p.id === id)) {
-            throw new Error('Page with this ID already exists');
+        try {
+            const pages = await loadPages();
+            if (Array.isArray(pages) && pages.some(p => p.id === id)) {
+                console.log(`Page with ID ${id} already exists, using existing page`);
+                return pages.find(p => p.id === id);
+            }
+        } catch (error) {
+            console.warn('Error checking existing pages:', error);
+            // Continue with creation attempt even if checking fails
         }
+
+        // Create the page
+        const newPage = {
+            id,
+            name,
+            snippets: []
+        };
 
         const response = await makeRequest('/api/pages', {
             method: 'POST',
-            body: JSON.stringify({
-                id,
-                name,
-                snippets: []
-            })
+            body: JSON.stringify(newPage)
         });
 
+        console.log('Page created successfully:', response);
         showAlert('Page created successfully!', 'success');
-        await loadPages(); // Refresh the page list
+        
+        try {
+            await loadPages(); // Refresh the page list
+        } catch (refreshError) {
+            console.warn('Error refreshing pages after creation:', refreshError);
+        }
+        
         return response;
     } catch (error) {
+        console.error('Error creating page:', error);
+        
+        // Check if this is the home page creation during initialization
+        if (name.toLowerCase() === 'home') {
+            console.warn('Failed to create home page on server, using local fallback');
+            return { id: 'home', name: 'Home', snippets: [] };
+        }
+        
         showAlert(`Failed to create page: ${error.message}`, 'danger');
         throw error;
     }
@@ -1359,54 +1477,44 @@ document.getElementById('preview-toggle-btn').addEventListener('click', togglePr
 function navigateToPage(pageId) {
     console.log('Navigating to page:', pageId);
     
+    // Default to home page if no pageId is provided
     if (!pageId) {
-        console.error('Invalid pageId provided to navigateToPage');
-        showAlert('Invalid page ID', 'danger');
-        return;
+        console.log('No pageId provided, defaulting to home page');
+        pageId = 'home';
     }
 
     try {
         // Make this function globally accessible
         window.navigateToPage = navigateToPage;
         
-        // Check if our DOM elements are available
-        if (isPreviewMode && !document.getElementById('public-content')) {
-            console.error('Public content container not found, cannot navigate');
-            showAlert('Navigation failed: UI elements not ready. Please refresh the page.', 'danger');
-            return;
-        }
-        
-        if (!isPreviewMode && !document.getElementById('content')) {
-            console.error('Content container not found, cannot navigate');
-            showAlert('Navigation failed: UI elements not ready. Please refresh the page.', 'danger');
-            return;
-        }
-        
         // Set the current page
         currentPage = pageId;
         localStorage.setItem('currentPage', pageId);
         
-        // Handle navigation differently based on mode and role
+        // Load the appropriate view based on user role and mode
         if (userRole === 'admin') {
-            // Special case: Only load admin dashboard data on the "admin" page
+            // Special case for admin dashboard
             if (pageId === 'admin') {
-                // Clear existing content to prepare for dashboard
                 const content = document.getElementById('content');
                 if (content) {
                     content.innerHTML = '';
                 }
-                loadAdminDashboard();
+                if (typeof loadAdminDashboard === 'function') {
+                    loadAdminDashboard();
+                } else {
+                    console.warn('loadAdminDashboard function not available');
+                    loadPageContent(pageId);
+                }
             } else if (isPreviewMode) {
                 loadPublicPage(pageId);
             } else {
-                // For non-admin pages, load the page content without the dashboard
                 loadPageContent(pageId);
             }
         } else {
             loadPublicPage(pageId);
         }
         
-        // Update page navigation buttons if they exist
+        // Update page navigation buttons
         const pageButtons = document.querySelectorAll('.page-button');
         pageButtons.forEach(btn => {
             const buttonPageId = btn.getAttribute('data-page-id') || btn.textContent.trim().toLowerCase();
@@ -1417,6 +1525,12 @@ function navigateToPage(pageId) {
     } catch (error) {
         console.error('Navigation error:', error);
         showAlert(`Navigation failed: ${error.message}`, 'danger');
+        
+        // If navigation to a page fails, try to navigate to home
+        if (pageId !== 'home') {
+            console.log('Falling back to home page');
+            navigateToPage('home');
+        }
     }
 }
 
