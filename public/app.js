@@ -140,6 +140,7 @@ async function updateView() {
             if (userRole === 'admin') {
                 if (adminPanel) {
                     adminPanel.style.display = 'block';
+                    if (adminToolbar) adminToolbar.style.display = 'flex';
                     
                     // Load pages for navigation
                     const pages = await loadPages();
@@ -152,6 +153,7 @@ async function updateView() {
                     const pageToLoad = storedPage || (defaultPage ? defaultPage.id : null);
                     
                     if (pageToLoad) {
+                        // We'll call navigateToPage which handles all the different page types
                         navigateToPage(pageToLoad);
                     } else {
                         console.error('No pages available');
@@ -191,43 +193,13 @@ async function updateView() {
             if (loginFormContainer) {
                 loginFormContainer.style.display = 'block';
             } else {
-                console.error('Login form container element not found');
-                showAlert('UI error: Login form container element not found', 'danger');
-                
-                // Try to create a minimal login form as a fallback
-                const fallbackForm = document.createElement('div');
-                fallbackForm.className = 'container mt-5';
-                fallbackForm.innerHTML = `
-                    <div class="alert alert-danger">Error: Login form not found. Using fallback.</div>
-                    <div class="card">
-                        <div class="card-body">
-                            <h2>Login</h2>
-                            <form id="fallbackLoginForm">
-                                <div class="mb-3">
-                                    <input type="email" class="form-control" id="fallbackEmail" placeholder="Email" required>
-                                </div>
-                                <div class="mb-3">
-                                    <input type="password" class="form-control" id="fallbackPassword" placeholder="Password" required>
-                                </div>
-                                <button type="submit" class="btn btn-primary">Login</button>
-                            </form>
-                        </div>
-                    </div>
-                `;
-                document.body.appendChild(fallbackForm);
-                
-                // Add event listener to the fallback form
-                document.getElementById('fallbackLoginForm').addEventListener('submit', async (e) => {
-                    e.preventDefault();
-                    const email = document.getElementById('fallbackEmail').value.trim();
-                    const password = document.getElementById('fallbackPassword').value;
-                    await login(email, password);
-                });
+                console.error('Login form container not found');
+                showAlert('UI error: Login form container not found. Please refresh the page.', 'danger');
             }
         }
     } catch (error) {
         console.error('Error updating view:', error);
-        showAlert('Failed to initialize application: ' + error.message, 'danger');
+        showAlert(`Error updating view: ${error.message}`, 'danger');
     }
 }
 
@@ -316,7 +288,7 @@ async function login(email, password) {
             if (userRole === 'admin') {
                 console.log('User is admin, calling showAdminPanel()');
                 showAdminPanel();
-                loadAdminDashboard();
+                // Don't automatically load admin dashboard here
             } else {
                 console.log('User is not admin, calling showPublicView()');
                 showPublicView();
@@ -351,6 +323,13 @@ async function loadAdminDashboard() {
 
 function renderAdminDashboard(data) {
     console.log('Rendering admin dashboard with data:', data);
+    
+    // Only render the dashboard on the admin page
+    if (currentPage !== 'admin') {
+        console.log('Not on admin page, skipping dashboard render');
+        return;
+    }
+    
     // Clear existing dashboard elements first
     const existingDashboard = document.querySelector('.admin-stats');
     if (existingDashboard) {
@@ -431,11 +410,19 @@ function showAdminPanel() {
     if (adminToolbar) adminToolbar.style.display = 'flex';
     if (adminPanel) adminPanel.style.display = 'block';
     
-    console.log('Admin panel display updated - loading dashboard');
+    console.log('Admin panel display updated');
     
-    // Load fresh admin dashboard data
-    loadAdminDashboard();
+    // Load pages without automatically loading dashboard
     loadPages();
+    
+    // Get current page from localStorage or default to first page
+    const storedPage = localStorage.getItem('currentPage');
+    if (storedPage) {
+        navigateToPage(storedPage);
+    } else {
+        // If no stored page, we'll navigate to the first available page
+        // which will be handled after loadPages() completes
+    }
 }
 
 function showPublicView() {
@@ -541,6 +528,21 @@ async function loadPageContent(pageId) {
         const container = document.getElementById('content');
         if (!container) {
             throw new Error('Content container not found. Please refresh the page.');
+        }
+        
+        // Special case for admin dashboard
+        if (pageId === 'admin' && userRole === 'admin') {
+            loadAdminDashboard();
+            return;
+        }
+        
+        // First, clear any existing content including dashboard
+        container.innerHTML = '';
+        
+        // Remove any existing dashboard that might be present
+        const existingDashboard = document.querySelector('.admin-stats');
+        if (existingDashboard) {
+            existingDashboard.remove();
         }
         
         const page = await makeRequest(`/api/pages/${pageId}`);
@@ -1332,9 +1334,18 @@ function navigateToPage(pageId) {
         
         // Handle navigation differently based on mode and role
         if (userRole === 'admin') {
-            if (isPreviewMode) {
+            // Special case: Only load admin dashboard data on the "admin" page
+            if (pageId === 'admin') {
+                // Clear existing content to prepare for dashboard
+                const content = document.getElementById('content');
+                if (content) {
+                    content.innerHTML = '';
+                }
+                loadAdminDashboard();
+            } else if (isPreviewMode) {
                 loadPublicPage(pageId);
             } else {
+                // For non-admin pages, load the page content without the dashboard
                 loadPageContent(pageId);
             }
         } else {
@@ -1350,8 +1361,8 @@ function navigateToPage(pageId) {
             btn.classList.toggle('btn-outline-primary', !isActive);
         });
     } catch (error) {
-        console.error('Error during page navigation:', error);
-        showAlert('Navigation failed: ' + error.message, 'danger');
+        console.error('Navigation error:', error);
+        showAlert(`Navigation failed: ${error.message}`, 'danger');
     }
 }
 
