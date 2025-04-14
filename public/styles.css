@@ -409,12 +409,33 @@ body {
 
 .snippet-container {
     position: absolute;
-    z-index: 10;
-    cursor: move;
-    border: 1px solid transparent;
-    background: transparent;
-    min-width: 50px;
+    min-width: 100px;
     min-height: 50px;
+    border: 1px solid #ddd;
+    background-color: #f8f9fa;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    border-radius: 4px;
+    overflow: hidden;
+    z-index: 10;
+    transition: box-shadow 0.2s ease;
+}
+
+.snippet-container:hover {
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+.snippet-container.dragging {
+    cursor: grabbing !important;
+    box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+    opacity: 0.9;
+    z-index: 1000;
+    border: 2px dashed #007bff;
+}
+
+.snippet-container.resizing {
+    cursor: nwse-resize !important;
+    box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+    border: 2px dashed #28a745;
 }
 
 .snippet-container .snippet-content {
@@ -593,20 +614,6 @@ body {
     background: white;
 }
 
-.snippet-container.dragging {
-    opacity: 0.8;
-    z-index: 100;
-    box-shadow: 0 0 8px rgba(0,0,0,0.2);
-    border-color: #0d6efd;
-}
-
-.snippet-content iframe {
-    width: 100%;
-    height: 100%;
-    border: none;
-    pointer-events: auto;
-}
-
 .login-form .alert {
     position: static;
 }
@@ -703,4 +710,92 @@ body.snippet-dragging * {
 /* Make button labels more visible */
 .btn {
     font-weight: 500;
+}
+
+/* Add drag and drop specific styling */
+.snippet-container {
+    position: absolute;
+    min-width: 100px;
+    min-height: 50px;
+    border: 1px solid #ddd;
+    background-color: #f8f9fa;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    border-radius: 4px;
+    overflow: hidden;
+    z-index: 10;
+    transition: box-shadow 0.2s ease;
+}
+
+.snippet-container:hover {
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+.snippet-container.dragging {
+    cursor: grabbing !important;
+    box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+    opacity: 0.9;
+    z-index: 1000;
+    border: 2px dashed #007bff;
+}
+
+.snippet-container.resizing {
+    cursor: nwse-resize !important;
+    box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+    border: 2px dashed #28a745;
+}
+
+/* Resize handles */
+.resize-handle {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    background-color: #007bff;
+    border: 1px solid white;
+    border-radius: 50%;
+    z-index: 20;
+}
+
+.resize-handle.se {
+    bottom: 0;
+    right: 0;
+    cursor: nwse-resize;
+}
+
+/* Improve visibility while dragging */
+body.snippet-dragging {
+    cursor: grabbing !important;
+    user-select: none;
+}
+
+/* Overlay to capture events while dragging */
+#drag-overlay {
+    cursor: grabbing;
+    background-color: rgba(0,0,0,0.1);
+}
+
+/* Modal improvements */
+.modal.show {
+    display: block;
+    background-color: rgba(0,0,0,0.5);
+}
+
+.modal-dialog {
+    margin-top: 100px;
+    max-width: 500px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.modal-content {
+    border: none;
+    border-radius: 8px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+}
+
+.btn-close {
+    opacity: 0.8;
+}
+
+.btn-close:hover {
+    opacity: 1;
 } 

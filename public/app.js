@@ -26,6 +26,9 @@ let adminToolbar;
 document.addEventListener('DOMContentLoaded', () => {
     console.log('DOM fully loaded and parsed');
     
+    // Initialize fallback mode
+    setupFallbackMode();
+    
     // Initialize variables from local storage
     token = localStorage.getItem('token') || '';
     userRole = localStorage.getItem('userRole') || '';
@@ -121,6 +124,16 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log('Added event listener to logout button');
     } else {
         console.warn('Logout button not found in DOM');
+    }
+    
+    // Initialize Add Navigation Button if it exists
+    const addNavBtn = document.getElementById('addNavBtn');
+    if (addNavBtn) {
+        addNavBtn.addEventListener('click', function() {
+            console.log('Add Navigation Button clicked');
+            showNavButtonEditor(null);
+        });
+        console.log('Add Navigation Button found and initialized');
     }
     
     // Setup drag and resize functionality
@@ -1533,6 +1546,21 @@ function setupDragAndResize() {
     let lastSizeUpdate = 0;
     const updateInterval = 250; // ms between updates during drag/resize
     
+    // Create DOM container for overlay if it doesn't exist
+    let overlay = document.getElementById('drag-overlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'drag-overlay';
+        overlay.style.position = 'fixed';
+        overlay.style.top = '0';
+        overlay.style.left = '0';
+        overlay.style.width = '100%';
+        overlay.style.height = '100%';
+        overlay.style.zIndex = '1000';
+        overlay.style.display = 'none';
+        document.body.appendChild(overlay);
+    }
+    
     // Use delegation for better performance with many snippets
     document.addEventListener('mousedown', (e) => {
         // Don't trigger in preview mode or if we're clicking on a control button
@@ -1542,7 +1570,11 @@ function setupDragAndResize() {
         const resizeHandle = e.target.closest('.resize-handle');
         if (resizeHandle && !isPreviewMode) {
             e.preventDefault();
+            
+            // Find the parent snippet container
             activeSnippet = resizeHandle.closest('.snippet-container');
+            if (!activeSnippet) return; // Safety check
+            
             action = 'resize';
             isResizing = true;
             
@@ -1555,6 +1587,10 @@ function setupDragAndResize() {
             // Add a class to indicate resizing
             activeSnippet.classList.add('resizing');
             document.body.classList.add('snippet-dragging');
+            
+            // Show overlay to capture all mouse events
+            overlay.style.display = 'block';
+            
             console.log('Resize started for snippet:', activeSnippet.id);
             return;
         }
@@ -1576,9 +1612,13 @@ function setupDragAndResize() {
                 startX = e.clientX;
                 startY = e.clientY;
                 
-                // Add a class for styling during drag
+                // Add classes for styling during drag
                 activeSnippet.classList.add('dragging');
                 document.body.classList.add('snippet-dragging');
+                
+                // Show overlay to capture all mouse events
+                overlay.style.display = 'block';
+                
                 console.log('Drag started for snippet:', activeSnippet.id);
             }
         }
@@ -1694,6 +1734,12 @@ function setupDragAndResize() {
             action = null;
             activeSnippet = null;
             document.body.classList.remove('snippet-dragging');
+            
+            // Hide overlay
+            if (overlay) {
+                overlay.style.display = 'none';
+            }
+            
             console.log('Drag/resize ended');
         }
     };
@@ -1703,46 +1749,56 @@ function setupDragAndResize() {
         if (isPreviewMode) return;
         
         const touch = e.touches[0];
-        if (touch) {
-            const touchTarget = document.elementFromPoint(touch.clientX, touch.clientY);
+        if (!touch) return;
+        
+        const touchTarget = document.elementFromPoint(touch.clientX, touch.clientY);
+        if (!touchTarget) return;
+        
+        // Check if we're touching a resize handle
+        const resizeHandle = touchTarget.closest('.resize-handle');
+        if (resizeHandle && !isPreviewMode) {
+            e.preventDefault();
             
-            // Check if we're touching a resize handle
-            const resizeHandle = touchTarget?.closest('.resize-handle');
-            if (resizeHandle && !isPreviewMode) {
+            activeSnippet = resizeHandle.closest('.snippet-container');
+            if (!activeSnippet) return; // Safety check
+            
+            action = 'resize';
+            isResizing = true;
+            
+            // Store starting dimensions
+            startWidth = activeSnippet.offsetWidth;
+            startHeight = activeSnippet.offsetHeight;
+            startX = touch.clientX;
+            startY = touch.clientY;
+            
+            activeSnippet.classList.add('resizing');
+            document.body.classList.add('snippet-dragging');
+            
+            // Show overlay to capture all touch events
+            overlay.style.display = 'block';
+            return;
+        }
+        
+        // Check if we're touching a snippet for dragging
+        const snippet = touchTarget.closest('.snippet-container');
+        if (snippet && !isPreviewMode) {
+            if (!touchTarget.closest('button') && !touchTarget.closest('a') && !touchTarget.closest('input')) {
                 e.preventDefault();
-                activeSnippet = resizeHandle.closest('.snippet-container');
-                action = 'resize';
-                isResizing = true;
+                activeSnippet = snippet;
+                action = 'drag';
+                isDragging = true;
                 
-                // Store starting dimensions
-                startWidth = activeSnippet.offsetWidth;
-                startHeight = activeSnippet.offsetHeight;
+                const style = window.getComputedStyle(activeSnippet);
+                startLeft = parseInt(style.left, 10) || 0;
+                startTop = parseInt(style.top, 10) || 0;
                 startX = touch.clientX;
                 startY = touch.clientY;
                 
-                activeSnippet.classList.add('resizing');
+                activeSnippet.classList.add('dragging');
                 document.body.classList.add('snippet-dragging');
-                return;
-            }
-            
-            // Check if we're touching a snippet for dragging
-            const snippet = touchTarget?.closest('.snippet-container');
-            if (snippet && !isPreviewMode) {
-                if (!touchTarget.closest('button') && !touchTarget.closest('a') && !touchTarget.closest('input')) {
-                    e.preventDefault();
-                    activeSnippet = snippet;
-                    action = 'drag';
-                    isDragging = true;
-                    
-                    const style = window.getComputedStyle(activeSnippet);
-                    startLeft = parseInt(style.left, 10) || 0;
-                    startTop = parseInt(style.top, 10) || 0;
-                    startX = touch.clientX;
-                    startY = touch.clientY;
-                    
-                    activeSnippet.classList.add('dragging');
-                    document.body.classList.add('snippet-dragging');
-                }
+                
+                // Show overlay to capture all touch events
+                overlay.style.display = 'block';
             }
         }
     }, { passive: false });
@@ -1785,6 +1841,14 @@ function setupDragAndResize() {
     
     // Also handle cases where mouse leaves the window
     document.addEventListener('mouseleave', onMouseUp);
+    
+    // Handle overlay events
+    if (overlay) {
+        overlay.addEventListener('mousemove', onMouseMove);
+        overlay.addEventListener('mouseup', onMouseUp);
+        overlay.addEventListener('touchmove', onMouseMove, { passive: false });
+        overlay.addEventListener('touchend', onMouseUp);
+    }
     
     console.log('Drag and resize event listeners attached');
 }
@@ -2388,7 +2452,14 @@ async function showNavButtonEditor(navId = null) {
     
     try {
         // Get available pages for the select dropdown
-        const pages = await makeRequest('/api/pages');
+        let pages = [];
+        try {
+            pages = await makeRequest('/api/pages');
+        } catch (error) {
+            console.warn('Failed to fetch pages from API, using fallback:', error);
+            const storedPages = JSON.parse(localStorage.getItem('fallbackPages') || '{}');
+            pages = Object.values(storedPages);
+        }
         console.log('Available pages:', pages);
         
         // If editing existing button, get its current data
@@ -2475,7 +2546,9 @@ async function showNavButtonEditor(navId = null) {
         
         // Add save button handler
         document.getElementById('saveNavButton').addEventListener('click', async () => {
-            await createAndSaveNavButton(navId, isNewButton);
+            // Generate a new ID if this is a new button
+            const buttonId = isNewButton ? Date.now().toString() : navId;
+            await createAndSaveNavButton(buttonId, isNewButton);
             modal.remove();
         });
         
@@ -2488,50 +2561,61 @@ async function showNavButtonEditor(navId = null) {
 // Function to create and save navigation button
 async function createAndSaveNavButton(navId, isNew = false) {
     console.log('Creating/saving nav button:', navId, 'isNew:', isNew);
-    const modal = document.querySelector('.modal');
-    const pageSelect = modal.querySelector('#pageSelect');
-    const buttonText = modal.querySelector('#buttonText');
-    const buttonStyle = modal.querySelector('#buttonStyle');
     
-    const buttonData = {
-        id: navId,
-        targetPage: pageSelect.value,
-        text: buttonText.value,
-        style: buttonStyle.value,
-        position: { x: 20, y: 20 }
-    };
-
-    console.log('Button data:', buttonData);
-
     try {
+        // Get the form values
+        const targetPage = document.getElementById('pageSelect').value;
+        const buttonText = document.getElementById('buttonText').value;
+        const buttonStyle = document.getElementById('buttonStyle').value;
+        
+        // Create the button data
+        const buttonData = {
+            id: navId,
+            text: buttonText,
+            style: buttonStyle,
+            targetPage: targetPage,
+            position: { x: 20, y: 20 }
+        };
+        
+        console.log('Button data:', buttonData);
+        
+        // Get the current page
         const page = await getCurrentPage();
         console.log('Current page:', page);
+        
+        if (!page) {
+            throw new Error('Could not get current page data');
+        }
         
         // Initialize navButtons array if it doesn't exist
         if (!page.navButtons) {
             page.navButtons = [];
         }
-
-        const existingIndex = page.navButtons.findIndex(nav => nav.id === navId);
-        if (existingIndex >= 0) {
-            page.navButtons[existingIndex] = { ...page.navButtons[existingIndex], ...buttonData };
-        } else {
+        
+        // Update or add the button
+        if (isNew) {
             page.navButtons.push(buttonData);
+        } else {
+            const index = page.navButtons.findIndex(btn => btn.id === navId);
+            if (index !== -1) {
+                page.navButtons[index] = buttonData;
+            } else {
+                page.navButtons.push(buttonData);
+            }
         }
-
-        // Save to backend first
-        const updatedPage = { ...page };
-        console.log('Updating page with:', updatedPage);
-        await updatePage(updatedPage);
-
-        // After successful save, update the DOM
+        
+        // Update the page
+        await updatePage(page);
+        
+        // Refresh the navigation buttons
         await renderNavigationButtons(page.navButtons);
         
-        modal.remove();
-        showAlert('Navigation button saved successfully', 'success');
+        showAlert(`Navigation button successfully ${isNew ? 'added' : 'updated'}!`, 'success');
+        return buttonData;
     } catch (error) {
-        console.error('Error saving nav button:', error);
-        showAlert('Failed to save navigation button', 'danger');
+        console.error('Error creating/saving navigation button:', error);
+        showAlert(`Failed to ${isNew ? 'add' : 'update'} navigation button: ${error.message}`, 'danger');
+        throw error;
     }
 }
 
@@ -3746,3 +3830,108 @@ document.addEventListener('DOMContentLoaded', () => {
         alert('There was an error initializing the application. Please try refreshing the page.');
     }
 });
+
+// Enhanced fallback functions for managing pages in localStorage
+function setupFallbackMode() {
+    console.log('Setting up fallback mode for offline operation');
+    
+    // Initialize fallback storage if needed
+    if (!localStorage.getItem('fallbackPages')) {
+        localStorage.setItem('fallbackPages', JSON.stringify({
+            home: {
+                id: 'home',
+                name: 'Home',
+                snippets: [],
+                navButtons: []
+            }
+        }));
+    }
+    
+    // Set a fallback token to indicate we're in offline mode
+    if (!localStorage.getItem('token')) {
+        localStorage.setItem('token', 'admin_fallback_token');
+        localStorage.setItem('userRole', 'admin');
+    }
+}
+
+// Enhanced function to handle page creation in both normal and fallback modes
+async function createPage(name) {
+    try {
+        console.log(`Creating page: ${name} with ID: ${name.toLowerCase().replace(/\s+/g, '-')}`);
+        const pageId = name.toLowerCase().replace(/\s+/g, '-');
+        
+        // First, try the API
+        try {
+            const response = await makeRequest('/api/pages', {
+                method: 'POST',
+                body: JSON.stringify({ name, id: pageId })
+            });
+            
+            // Update the view
+            await loadPages();
+            navigateToPage(pageId);
+            showAlert(`Page "${name}" created successfully!`, 'success');
+            return response;
+        } catch (apiError) {
+            console.warn('API call failed, using fallback mode:', apiError);
+            
+            // Fallback - use localStorage
+            const storedPages = JSON.parse(localStorage.getItem('fallbackPages') || '{}');
+            if (storedPages[pageId]) {
+                throw new Error(`Page "${name}" already exists`);
+            }
+            
+            // Create new page in localStorage
+            storedPages[pageId] = {
+                id: pageId,
+                name: name,
+                snippets: [],
+                navButtons: []
+            };
+            
+            localStorage.setItem('fallbackPages', JSON.stringify(storedPages));
+            console.log('Page created successfully:', storedPages);
+            
+            // Update the view in fallback mode
+            await loadPages();
+            navigateToPage(pageId);
+            showAlert(`Page "${name}" created in offline mode!`, 'success');
+            return [storedPages[pageId]];
+        }
+    } catch (error) {
+        console.error('Error creating page:', error);
+        showAlert(`Failed to create page: ${error.message}`, 'danger');
+        throw error;
+    }
+}
+
+// Enhanced function to handle page updates in both normal and fallback modes
+async function updatePage(pageData) {
+    try {
+        // Try API first
+        try {
+            return await makeRequest(`/api/pages/${pageData.id}`, {
+                method: 'PUT',
+                body: JSON.stringify(pageData)
+            });
+        } catch (apiError) {
+            console.warn('API update failed, using fallback mode:', apiError);
+            
+            // Fallback - use localStorage
+            const storedPages = JSON.parse(localStorage.getItem('fallbackPages') || '{}');
+            storedPages[pageData.id] = pageData;
+            localStorage.setItem('fallbackPages', JSON.stringify(storedPages));
+            
+            // Refresh current content if needed
+            if (pageData.id === currentPage) {
+                await loadPageContent(currentPage);
+            }
+            
+            return pageData;
+        }
+    } catch (error) {
+        console.error('Error updating page:', error);
+        showAlert(`Failed to update page: ${error.message}`, 'danger');
+        throw error;
+    }
+}
