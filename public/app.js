@@ -8,23 +8,23 @@ let isResizing = false;
 let updateTimeout = null;
 let navButtons = [];
 
-// Use relative URL for API by default, falling back to the environment value if defined
-const API_BASE_URL = window.location.origin || 'https://mbti-render.onrender.com';
-console.log('Using API base URL:', API_BASE_URL);
+// Use window.location.origin instead of hardcoded URL
+// Override any existing window.API_BASE_URL that might be set elsewhere
+window.API_BASE_URL = window.location.origin;
+const API_BASE_URL = window.location.origin;
+console.log('API base URL initialized to:', API_BASE_URL);
 
 // Flag to track if the app is in initialization state
 let isInitializing = true;
 
 // DOM Elements - these will be initialized when the DOM is loaded
-let loginForm;
-let registerForm;
-let loginFormContainer;
-let adminPanel;
-let publicView;
-let pagesNav;
-let content;
-let publicContent;
-let adminToolbar;
+let loginFormContainer = null;
+let adminPanel = null;
+let publicView = null;
+let adminToolbar = null;
+let pagesNav = null;
+let content = null;
+let publicContent = null;
 
 // Initialize functionality after DOM is fully loaded
 document.addEventListener('DOMContentLoaded', () => {
@@ -37,6 +37,8 @@ document.addEventListener('DOMContentLoaded', () => {
     token = localStorage.getItem('token') || '';
     userRole = localStorage.getItem('userRole') || '';
     currentPage = localStorage.getItem('currentPage') || 'home';
+    username = localStorage.getItem('username');
+    isOffline = false;
     
     // Initialize preview mode state from localStorage
     const storedPreviewMode = localStorage.getItem('isPreviewMode');
@@ -1408,6 +1410,12 @@ async function createPage(name) {
 
 // Fix for the null element issue at line 786
 function showCreatePageModal() {
+    // Check if the user is logged in and has admin role
+    if (!token || userRole !== 'admin') {
+        showAlert('You must be logged in as admin to add pages', 'warning');
+        return;
+    }
+    
     // Create modal dynamically
     const modalId = 'createPageModal';
     let modalElement = document.getElementById(modalId);
@@ -1443,38 +1451,71 @@ function showCreatePageModal() {
         </div>
     `;
     
-    // Append modal to body
-    document.body.insertAdjacentHTML('beforeend', modalHTML);
-    modalElement = document.getElementById(modalId);
+    // Add modal to the body
+    const modalContainer = document.createElement('div');
+    modalContainer.innerHTML = modalHTML;
+    document.body.appendChild(modalContainer.firstChild);
     
-    // Add event listener to create button
-    const createButton = document.getElementById('createPageBtn');
-    if (createButton) {
-        createButton.addEventListener('click', async () => {
-            const pageName = document.getElementById('newPageName').value;
-            if (pageName) {
-                try {
-                    await createPage(pageName);
+    // Focus on the input field
+    const newPageNameInput = document.getElementById('newPageName');
+    if (newPageNameInput) {
+        newPageNameInput.focus();
+        
+        // Add enter key handler
+        newPageNameInput.addEventListener('keyup', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                document.getElementById('createPageBtn').click();
+            }
+        });
+    }
+    
+    // Add click handler for the create button
+    const createPageBtn = document.getElementById('createPageBtn');
+    if (createPageBtn) {
+        createPageBtn.addEventListener('click', async () => {
+            try {
+                const pageName = document.getElementById('newPageName').value;
+                if (!pageName) {
+                    showAlert('Page name cannot be empty', 'danger');
+                    return;
+                }
+                
+                // Show loading state
+                createPageBtn.innerHTML = 'Creating...';
+                createPageBtn.disabled = true;
+                
+                const result = await createPage(pageName);
+                if (result) {
+                    showAlert('Page created successfully!', 'success');
                     document.getElementById(modalId).remove();
-                } catch (error) {
-                    showAlert(`Failed to create page: ${error.message}`, 'danger');
+                    
+                    // Navigate to the new page
+                    navigateToPage(result.id);
+                } else {
+                    showAlert('Failed to create page', 'danger');
+                }
+            } catch (error) {
+                console.error('Error creating page:', error);
+                showAlert(`Failed to create page: ${error.message}`, 'danger');
+            } finally {
+                if (document.getElementById('createPageBtn')) {
+                    document.getElementById('createPageBtn').innerHTML = 'Create';
+                    document.getElementById('createPageBtn').disabled = false;
                 }
             }
         });
     }
     
-    // Focus on input
-    const pageNameInput = document.getElementById('newPageName');
-    if (pageNameInput) {
-        setTimeout(() => pageNameInput.focus(), 100);
+    // Close modal when clicking outside
+    const modal = document.getElementById(modalId);
+    if (modal) {
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                modal.remove();
+            }
+        });
     }
-    
-    // Add click listener to backdrop for closing
-    modalElement.addEventListener('click', (e) => {
-        if (e.target === modalElement) {
-            modalElement.remove();
-        }
-    });
 }
 
 // Update the event listener for the Add Page button with null check
@@ -1695,326 +1736,361 @@ async function saveSizeImmediately(snippetId, size) {
     }
 }
 
-// Updated setupDragAndResize function
+// Setup drag and resize functionality
 function setupDragAndResize() {
-    console.log('Setting up drag and resize functionality');
-    let activeSnippet = null;
-    let startX, startY;
-    let startLeft, startTop;
-    let startWidth, startHeight;
-    let action = null;
-    let isDragging = false;
-    let isResizing = false;
-    let updateTimeout;
-    let lastPositionUpdate = 0;
-    let lastSizeUpdate = 0;
-    const updateInterval = 250; // ms between updates during drag/resize
-    
-    // Create DOM container for overlay if it doesn't exist
-    let overlay = document.getElementById('drag-overlay');
-    if (!overlay) {
-        overlay = document.createElement('div');
-        overlay.id = 'drag-overlay';
-        overlay.style.position = 'fixed';
-        overlay.style.top = '0';
-        overlay.style.left = '0';
-        overlay.style.width = '100%';
-        overlay.style.height = '100%';
-        overlay.style.zIndex = '1000';
-        overlay.style.display = 'none';
-        document.body.appendChild(overlay);
-    }
-    
-    // Use delegation for better performance with many snippets
-    document.addEventListener('mousedown', (e) => {
-        // Don't trigger in preview mode or if we're clicking on a control button
-        if (isPreviewMode || e.target.closest('.snippet-controls')) return;
+    try {
+        console.log('Setting up drag and resize functionality');
         
-        // Check if we're clicking on a resize handle
-        const resizeHandle = e.target.closest('.resize-handle');
-        if (resizeHandle && !isPreviewMode) {
-            e.preventDefault();
+        // Get all snippet containers
+        const containers = document.querySelectorAll('.snippet-container');
+        if (!containers || containers.length === 0) {
+            console.log('No snippet containers found to setup drag and resize');
+            return;
+        }
+        
+        console.log(`Found ${containers.length} snippet containers to setup`);
+        
+        // Ensure we have a clean slate
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+        document.removeEventListener('touchmove', onTouchMove);
+        document.removeEventListener('touchend', onTouchEnd);
+        
+        // Create an overlay for drag operations to capture events
+        let dragOverlay = document.getElementById('drag-overlay');
+        if (!dragOverlay) {
+            dragOverlay = document.createElement('div');
+            dragOverlay.id = 'drag-overlay';
+            dragOverlay.style.position = 'fixed';
+            dragOverlay.style.top = '0';
+            dragOverlay.style.left = '0';
+            dragOverlay.style.width = '100%';
+            dragOverlay.style.height = '100%';
+            dragOverlay.style.zIndex = '9998';
+            dragOverlay.style.display = 'none';
+            document.body.appendChild(dragOverlay);
+        }
+        
+        // Variables to keep track of the drag state
+        let activeContainer = null;
+        let startX, startY;
+        let startLeft, startTop;
+        let startWidth, startHeight;
+        let isDragging = false;
+        let isResizing = false;
+        let dragAction = '';
+        
+        // Ensure we're tracking the position relative to the parent container
+        const getRelativePosition = (e, container) => {
+            const parent = container.parentElement;
+            if (!parent) return { x: 0, y: 0 };
             
-            // Find the parent snippet container
-            activeSnippet = resizeHandle.closest('.snippet-container');
-            if (!activeSnippet) return; // Safety check
+            const parentRect = parent.getBoundingClientRect();
+            const x = e.clientX - parentRect.left;
+            const y = e.clientY - parentRect.top;
             
-            action = 'resize';
+            return { x, y };
+        };
+        
+        // Helper to get touch position
+        const getTouchPosition = (touch, container) => {
+            const parent = container.parentElement;
+            if (!parent) return { x: 0, y: 0 };
+            
+            const parentRect = parent.getBoundingClientRect();
+            const x = touch.clientX - parentRect.left;
+            const y = touch.clientY - parentRect.top;
+            
+            return { x, y };
+        };
+        
+        // Attach mousedown/touchstart event listeners to each container
+        containers.forEach(container => {
+            // Prevent adding duplicate event listeners
+            container.removeEventListener('mousedown', onMouseDown);
+            container.removeEventListener('touchstart', onTouchStart);
+            
+            // Add event listeners for drag and resize
+            container.addEventListener('mousedown', onMouseDown);
+            container.addEventListener('touchstart', onTouchStart, { passive: false });
+            
+            // Get the resize handle
+            const resizeHandle = container.querySelector('.resize-handle.se');
+            if (resizeHandle) {
+                resizeHandle.removeEventListener('mousedown', onResizeStart);
+                resizeHandle.removeEventListener('touchstart', onResizeStart);
+                
+                resizeHandle.addEventListener('mousedown', onResizeStart);
+                resizeHandle.addEventListener('touchstart', onResizeStart, { passive: false });
+            }
+        });
+        
+        // Handler for mousedown on resize handle
+        function onResizeStart(e) {
+            e.stopPropagation();
+            if (e.type === 'touchstart') {
+                e.preventDefault(); // Prevent scrolling during resize
+            }
+            
             isResizing = true;
+            isDragging = false;
+            activeContainer = this.closest('.snippet-container');
             
-            // Store starting dimensions
-            startWidth = activeSnippet.offsetWidth;
-            startHeight = activeSnippet.offsetHeight;
+            if (!activeContainer) {
+                console.error('No active container found for resize');
+                return;
+            }
+            
+            // Show the overlay to capture events
+            dragOverlay.style.display = 'block';
+            
+            // Mark the container as being resized
+            activeContainer.classList.add('resizing');
+            
+            // Get the starting dimensions
+            startWidth = activeContainer.offsetWidth;
+            startHeight = activeContainer.offsetHeight;
+            
+            // Get the starting position
+            if (e.type === 'touchstart') {
+                startX = e.touches[0].clientX;
+                startY = e.touches[0].clientY;
+            } else {
+                startX = e.clientX;
+                startY = e.clientY;
+            }
+            
+            // Add the global event listeners
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+            document.addEventListener('touchmove', onTouchMove, { passive: false });
+            document.addEventListener('touchend', onTouchEnd);
+            
+            // Add a class to the body to indicate dragging
+            document.body.classList.add('snippet-dragging');
+        }
+        
+        // Handler for mousedown on container
+        function onMouseDown(e) {
+            // Ignore if clicked on a control element
+            if (e.target.closest('.snippet-controls') || e.target.closest('.resize-handle')) {
+                return;
+            }
+            
+            isDragging = true;
+            isResizing = false;
+            activeContainer = this;
+            dragAction = 'move';
+            
+            // Show the overlay to capture events
+            dragOverlay.style.display = 'block';
+            
+            // Mark the container as being dragged
+            activeContainer.classList.add('dragging');
+            
+            // Get the starting position of the mouse
             startX = e.clientX;
             startY = e.clientY;
             
-            // Add a class to indicate resizing
-            activeSnippet.classList.add('resizing');
+            // Get the starting position of the container
+            startLeft = parseInt(activeContainer.style.left) || 0;
+            startTop = parseInt(activeContainer.style.top) || 0;
+            
+            // Add the global event listeners
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+            
+            // Add a class to the body to indicate dragging
             document.body.classList.add('snippet-dragging');
             
-            // Show overlay to capture all mouse events
-            overlay.style.display = 'block';
-            
-            console.log('Resize started for snippet:', activeSnippet.id);
-            return;
+            // Prevent default to avoid text selection
+            e.preventDefault();
         }
         
-        // Check if we're clicking on a snippet for dragging
-        const snippet = e.target.closest('.snippet-container');
-        if (snippet && !isPreviewMode) {
-            // If clicked on the content or handle area (not a button or interactive element)
-            if (!e.target.closest('button') && !e.target.closest('a') && !e.target.closest('input')) {
-                e.preventDefault();
-                activeSnippet = snippet;
-                action = 'drag';
-                isDragging = true;
-                
-                // Get the current position
-                const style = window.getComputedStyle(activeSnippet);
-                startLeft = parseInt(style.left, 10) || 0; // Default to 0 if NaN
-                startTop = parseInt(style.top, 10) || 0;   // Default to 0 if NaN
-                startX = e.clientX;
-                startY = e.clientY;
-                
-                // Add classes for styling during drag
-                activeSnippet.classList.add('dragging');
-                document.body.classList.add('snippet-dragging');
-                
-                // Show overlay to capture all mouse events
-                overlay.style.display = 'block';
-                
-                console.log('Drag started for snippet:', activeSnippet.id);
-            }
-        }
-    });
-    
-    const onMouseMove = (e) => {
-        // Only do something if we have an active snippet
-        if (!activeSnippet) return;
-        
-        if (action === 'drag' && isDragging) {
-            // Calculate new position
-            const dx = e.clientX - startX;
-            const dy = e.clientY - startY;
-       
-            const newLeft = startLeft + dx;
-            const newTop = startTop + dy;
-            
-            // Apply new position with some bounds checking
-            activeSnippet.style.left = `${Math.max(0, newLeft)}px`;
-            activeSnippet.style.top = `${Math.max(0, newTop)}px`;
-            
-            // Throttle position updates to the server/localStorage
-            const now = Date.now();
-            if (now - lastPositionUpdate > updateInterval) {
-                // Get the snippetId from the data attribute
-                const snippetId = activeSnippet.getAttribute('data-snippet-id');
-                if (snippetId) {
-                    const position = { 
-                        left: Math.max(0, newLeft), 
-                        top: Math.max(0, newTop) 
-                    };
-                    
-                    // Store in memory cache
-                    const cachedSnippets = JSON.parse(localStorage.getItem('cachedSnippets') || '{}');
-                    cachedSnippets[snippetId] = cachedSnippets[snippetId] || {};
-                    cachedSnippets[snippetId].position = position;
-                    localStorage.setItem('cachedSnippets', JSON.stringify(cachedSnippets));
-                    
-                    lastPositionUpdate = now;
-                }
-            }
-        } else if (action === 'resize' && isResizing) {
-            // Calculate new dimensions
-            const dx = e.clientX - startX;
-            const dy = e.clientY - startY;
-            
-            // Apply new dimensions with minimum sizes to prevent too small snippets
-            const newWidth = Math.max(100, startWidth + dx);
-            const newHeight = Math.max(50, startHeight + dy);
-            
-            activeSnippet.style.width = `${newWidth}px`;
-            activeSnippet.style.height = `${newHeight}px`;
-            
-            // Throttle size updates to the server/localStorage
-            const now = Date.now();
-            if (now - lastSizeUpdate > updateInterval) {
-                // Get the snippetId from the data attribute
-                const snippetId = activeSnippet.getAttribute('data-snippet-id');
-                if (snippetId) {
-                    const size = { 
-                        width: newWidth, 
-                        height: newHeight 
-                    };
-                    
-                    // Store in memory cache
-                    const cachedSnippets = JSON.parse(localStorage.getItem('cachedSnippets') || '{}');
-                    cachedSnippets[snippetId] = cachedSnippets[snippetId] || {};
-                    cachedSnippets[snippetId].size = size;
-                    localStorage.setItem('cachedSnippets', JSON.stringify(cachedSnippets));
-                    
-                    lastSizeUpdate = now;
-                }
-            }
-        }
-    };
-    
-    const onMouseUp = async () => {
-        if (!activeSnippet) return;
-        
-        try {
-            // Final update of position or size
-            if (action === 'drag' && isDragging) {
-                const style = window.getComputedStyle(activeSnippet);
-                const left = parseInt(style.left, 10) || 0;
-                const top = parseInt(style.top, 10) || 0;
-                
-                // Get the snippetId from the data attribute
-                const snippetId = activeSnippet.getAttribute('data-snippet-id');
-                if (snippetId) {
-                    await savePositionImmediately(snippetId, { left, top });
-                }
-                
-                activeSnippet.classList.remove('dragging');
-                isDragging = false;
-            } else if (action === 'resize' && isResizing) {
-                const width = activeSnippet.offsetWidth;
-                const height = activeSnippet.offsetHeight;
-                
-                // Get the snippetId from the data attribute
-                const snippetId = activeSnippet.getAttribute('data-snippet-id');
-                if (snippetId) {
-                    await saveSizeImmediately(snippetId, { width, height });
-                }
-                
-                activeSnippet.classList.remove('resizing');
-                isResizing = false;
-            }
-        } catch (error) {
-            console.error('Error updating snippet:', error);
-            showAlert('Failed to update snippet: ' + error.message, 'danger');
-        } finally {
-            // Clean up regardless of success or failure
-            action = null;
-            activeSnippet = null;
-            document.body.classList.remove('snippet-dragging');
-            
-            // Hide overlay
-            if (overlay) {
-                overlay.style.display = 'none';
+        // Handler for touchstart on container
+        function onTouchStart(e) {
+            // Ignore if touched on a control element
+            if (e.target.closest('.snippet-controls') || e.target.closest('.resize-handle')) {
+                return;
             }
             
-            console.log('Drag/resize ended');
-        }
-    };
-    
-    // Touch event handlers for mobile support
-    document.addEventListener('touchstart', (e) => {
-        if (isPreviewMode) return;
-        
-        const touch = e.touches[0];
-        if (!touch) return;
-        
-        const touchTarget = document.elementFromPoint(touch.clientX, touch.clientY);
-        if (!touchTarget) return;
-        
-        // Check if we're touching a resize handle
-        const resizeHandle = touchTarget.closest('.resize-handle');
-        if (resizeHandle && !isPreviewMode) {
+            // Prevent default to avoid scrolling
             e.preventDefault();
             
-            activeSnippet = resizeHandle.closest('.snippet-container');
-            if (!activeSnippet) return; // Safety check
+            isDragging = true;
+            isResizing = false;
+            activeContainer = this;
+            dragAction = 'move';
             
-            action = 'resize';
-            isResizing = true;
+            // Show the overlay to capture events
+            dragOverlay.style.display = 'block';
             
-            // Store starting dimensions
-            startWidth = activeSnippet.offsetWidth;
-            startHeight = activeSnippet.offsetHeight;
-            startX = touch.clientX;
-            startY = touch.clientY;
+            // Mark the container as being dragged
+            activeContainer.classList.add('dragging');
             
-            activeSnippet.classList.add('resizing');
+            // Get the starting position of the touch
+            startX = e.touches[0].clientX;
+            startY = e.touches[0].clientY;
+            
+            // Get the starting position of the container
+            startLeft = parseInt(activeContainer.style.left) || 0;
+            startTop = parseInt(activeContainer.style.top) || 0;
+            
+            // Add the global event listeners
+            document.addEventListener('touchmove', onTouchMove, { passive: false });
+            document.addEventListener('touchend', onTouchEnd);
+            
+            // Add a class to the body to indicate dragging
             document.body.classList.add('snippet-dragging');
-            
-            // Show overlay to capture all touch events
-            overlay.style.display = 'block';
-            return;
         }
         
-        // Check if we're touching a snippet for dragging
-        const snippet = touchTarget.closest('.snippet-container');
-        if (snippet && !isPreviewMode) {
-            if (!touchTarget.closest('button') && !touchTarget.closest('a') && !touchTarget.closest('input')) {
-                e.preventDefault();
-                activeSnippet = snippet;
-                action = 'drag';
-                isDragging = true;
-                
-                const style = window.getComputedStyle(activeSnippet);
-                startLeft = parseInt(style.left, 10) || 0;
-                startTop = parseInt(style.top, 10) || 0;
-                startX = touch.clientX;
-                startY = touch.clientY;
-                
-                activeSnippet.classList.add('dragging');
-                document.body.classList.add('snippet-dragging');
-                
-                // Show overlay to capture all touch events
-                overlay.style.display = 'block';
-            }
-        }
-    }, { passive: false });
-    
-    document.addEventListener('touchmove', (e) => {
-        if (!activeSnippet) return;
-        
-        const touch = e.touches[0];
-        if (touch) {
-            e.preventDefault(); // Prevent scrolling
+        // Handler for mousemove
+        const onMouseMove = (e) => {
+            if (!activeContainer) return;
             
-            if (action === 'drag' && isDragging) {
-                const dx = touch.clientX - startX;
-                const dy = touch.clientY - startY;
+            e.preventDefault();
+            
+            if (isDragging && dragAction === 'move') {
+                // Calculate the new position
+                const dx = e.clientX - startX;
+                const dy = e.clientY - startY;
                 
-                const newLeft = startLeft + dx;
-                const newTop = startTop + dy;
+                const newLeft = Math.max(0, startLeft + dx);
+                const newTop = Math.max(0, startTop + dy);
                 
-                activeSnippet.style.left = `${Math.max(0, newLeft)}px`;
-                activeSnippet.style.top = `${Math.max(0, newTop)}px`;
-            } else if (action === 'resize' && isResizing) {
-                const dx = touch.clientX - startX;
-                const dy = touch.clientY - startY;
+                // Apply the new position
+                activeContainer.style.left = `${newLeft}px`;
+                activeContainer.style.top = `${newTop}px`;
+            } else if (isResizing) {
+                // Calculate the new dimensions
+                const dx = e.clientX - startX;
+                const dy = e.clientY - startY;
                 
                 const newWidth = Math.max(100, startWidth + dx);
                 const newHeight = Math.max(50, startHeight + dy);
                 
-                activeSnippet.style.width = `${newWidth}px`;
-                activeSnippet.style.height = `${newHeight}px`;
+                // Apply the new dimensions
+                activeContainer.style.width = `${newWidth}px`;
+                activeContainer.style.height = `${newHeight}px`;
             }
-        }
-    }, { passive: false });
-    
-    document.addEventListener('touchend', onMouseUp);
-    document.addEventListener('touchcancel', onMouseUp);
-    
-    // Add the global mouse event listeners
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('mouseup', onMouseUp);
-    
-    // Also handle cases where mouse leaves the window
-    document.addEventListener('mouseleave', onMouseUp);
-    
-    // Handle overlay events
-    if (overlay) {
-        overlay.addEventListener('mousemove', onMouseMove);
-        overlay.addEventListener('mouseup', onMouseUp);
-        overlay.addEventListener('touchmove', onMouseMove, { passive: false });
-        overlay.addEventListener('touchend', onMouseUp);
+        };
+        
+        // Handler for touchmove
+        const onTouchMove = (e) => {
+            if (!activeContainer) return;
+            
+            e.preventDefault();
+            
+            if (isDragging && dragAction === 'move') {
+                // Calculate the new position
+                const dx = e.touches[0].clientX - startX;
+                const dy = e.touches[0].clientY - startY;
+                
+                const newLeft = Math.max(0, startLeft + dx);
+                const newTop = Math.max(0, startTop + dy);
+                
+                // Apply the new position
+                activeContainer.style.left = `${newLeft}px`;
+                activeContainer.style.top = `${newTop}px`;
+            } else if (isResizing) {
+                // Calculate the new dimensions
+                const dx = e.touches[0].clientX - startX;
+                const dy = e.touches[0].clientY - startY;
+                
+                const newWidth = Math.max(100, startWidth + dx);
+                const newHeight = Math.max(50, startHeight + dy);
+                
+                // Apply the new dimensions
+                activeContainer.style.width = `${newWidth}px`;
+                activeContainer.style.height = `${newHeight}px`;
+            }
+        };
+        
+        // Handler for mouseup
+        const onMouseUp = async () => {
+            if (!activeContainer) return;
+            
+            // Hide the overlay
+            dragOverlay.style.display = 'none';
+            
+            // Remove the drag/resize classes
+            activeContainer.classList.remove('dragging');
+            activeContainer.classList.remove('resizing');
+            
+            // Save the position or size if we moved or resized
+            if (isDragging && dragAction === 'move') {
+                // Get the snippet ID
+                const snippetId = activeContainer.dataset.id;
+                if (snippetId) {
+                    // Build the position data
+                    const position = {
+                        left: parseInt(activeContainer.style.left) || 0,
+                        top: parseInt(activeContainer.style.top) || 0
+                    };
+                    
+                    try {
+                        // Get the current page data
+                        const page = await getCurrentPage();
+                        if (page) {
+                            // Find the snippet
+                            const snippet = page.snippets.find(s => s.id === snippetId);
+                            if (snippet) {
+                                // Update the position
+                                snippet.position = position;
+                                
+                                // Save the updated page
+                                await updatePage(page);
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Error saving position:', error);
+                        showAlert('Failed to save position', 'danger');
+                    }
+                }
+            } else if (isResizing) {
+                // Get the snippet ID
+                const snippetId = activeContainer.dataset.id;
+                if (snippetId) {
+                    // Build the size data
+                    const size = {
+                        width: parseInt(activeContainer.style.width) || 100,
+                        height: parseInt(activeContainer.style.height) || 50
+                    };
+                    
+                    try {
+                        await saveSizeImmediately(snippetId, size);
+                    } catch (error) {
+                        console.error('Error saving size:', error);
+                        showAlert('Failed to save size', 'danger');
+                    }
+                }
+            }
+            
+            // Reset the state
+            isDragging = false;
+            isResizing = false;
+            activeContainer = null;
+            
+            // Remove the global event listeners
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+            document.removeEventListener('touchmove', onTouchMove);
+            document.removeEventListener('touchend', onTouchEnd);
+            
+            // Remove the dragging class from the body
+            document.body.classList.remove('snippet-dragging');
+        };
+        
+        // Handler for touchend
+        const onTouchEnd = async () => {
+            // Same as mouseup
+            await onMouseUp();
+        };
+        
+        console.log('Drag and resize event listeners attached');
+    } catch (error) {
+        console.error('Error setting up drag and resize:', error);
     }
-    
-    console.log('Drag and resize event listeners attached');
 }
 
 function showAlert(message, type) {
@@ -2612,173 +2688,272 @@ function createDraggableNavButton(navData = null) {
 
 // Function to show navigation button editor
 async function showNavButtonEditor(navId = null) {
-    console.log('Opening nav button editor, navId:', navId);
+    // Check if the user is logged in and has admin role
+    if (!token || userRole !== 'admin') {
+        showAlert('You must be logged in as admin to manage navigation buttons', 'warning');
+        return;
+    }
     
     try {
-        // Get available pages for the select dropdown
-        let pages = [];
-        try {
-            pages = await makeRequest('/api/pages');
-        } catch (error) {
-            console.warn('Failed to fetch pages from API, using fallback:', error);
-            const storedPages = JSON.parse(localStorage.getItem('fallbackPages') || '{}');
-            pages = Object.values(storedPages);
-        }
+        console.log('Opening nav button editor, navId:', navId);
+        
+        // Get available pages for the target dropdown
+        const pages = await getAvailablePages();
         console.log('Available pages:', pages);
         
-        // If editing existing button, get its current data
-        let currentButtonData = null;
-        const isNewButton = navId === null;
+        if (!pages || pages.length === 0) {
+            showAlert('No pages available for navigation', 'warning');
+            return;
+        }
         
-        if (!isNewButton) {
-            // Get the current page 
-            const currentPageData = await getCurrentPage();
+        // Find current page data
+        const currentPageId = currentPage || 'home';
+        const currentPageData = pages.find(p => p.id === currentPageId) || { id: 'home', name: 'Home' };
+        
+        // Get button data if editing existing button
+        let buttonData = null;
+        if (navId) {
+            // Get the current page to find the button
+            const page = await getCurrentPage();
+            if (page && page.navButtons) {
+                buttonData = page.navButtons.find(btn => btn.id === navId);
+            }
             
-            // Find the specified button in the current page's nav buttons
-            if (currentPageData && currentPageData.navButtons) {
-                currentButtonData = currentPageData.navButtons.find(btn => btn.id === navId);
+            if (!buttonData) {
+                console.warn('Nav button not found:', navId);
+                showAlert('Navigation button not found', 'danger');
+                return;
             }
         }
         
-        // Create modal
+        // Create modal HTML
         const modalId = 'navButtonModal';
-        let existingModal = document.getElementById(modalId);
-        if (existingModal) {
-            existingModal.remove();
+        let modalElement = document.getElementById(modalId);
+        
+        // Remove existing modal if any
+        if (modalElement) {
+            modalElement.remove();
         }
         
-        const modal = document.createElement('div');
-        modal.id = modalId;
-        modal.className = 'modal show';
-        modal.style = 'display: block; background-color: rgba(0,0,0,0.5);';
-        
-        modal.innerHTML = `
-            <div class="modal-dialog">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title">${isNewButton ? 'Add' : 'Edit'} Navigation Button</h5>
-                        <button type="button" class="btn-close" onclick="document.getElementById('${modalId}').remove()"></button>
-                    </div>
-                    <div class="modal-body">
-                        <div class="mb-3">
-                            <label class="form-label">Target Page</label>
-                            <select class="form-select" id="pageSelect">
-                                ${pages.map(page => 
-                                    `<option value="${page.id}" ${currentButtonData?.targetPage === page.id ? 'selected' : ''}>
-                                        ${page.name}
-                                    </option>`
-                                ).join('')}
-                            </select>
+        // Create modal content
+        const modalHTML = `
+            <div class="modal fade show" id="${modalId}" tabindex="-1" aria-labelledby="${modalId}Label" aria-hidden="true" style="display: block; background-color: rgba(0,0,0,0.5);">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="${modalId}Label">${navId ? 'Edit' : 'Add'} Navigation Button</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" onclick="document.getElementById('${modalId}').remove();"></button>
                         </div>
-                        <div class="mb-3">
-                            <label class="form-label">Button Text</label>
-                            <input type="text" class="form-control" id="buttonText" 
-                                   value="${currentButtonData?.text || 'Go to Home'}">
+                        <div class="modal-body">
+                            <form id="navButtonForm">
+                                <div class="mb-3">
+                                    <label for="buttonText" class="form-label">Button Text</label>
+                                    <input type="text" class="form-control" id="buttonText" value="${buttonData ? buttonData.text : ''}" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="buttonTarget" class="form-label">Target Page</label>
+                                    <select class="form-select" id="buttonTarget" required>
+                                        ${pages.map(page => `<option value="${page.id}" ${buttonData && buttonData.targetPage === page.id ? 'selected' : ''}>${page.name}</option>`).join('')}
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="buttonPosition" class="form-label">Position</label>
+                                    <select class="form-select" id="buttonPosition">
+                                        <option value="left" ${buttonData && buttonData.position === 'left' ? 'selected' : ''}>Left</option>
+                                        <option value="center" ${buttonData && buttonData.position === 'center' ? 'selected' : ''}>Center</option>
+                                        <option value="right" ${buttonData && buttonData.position === 'right' ? 'selected' : ''}>Right</option>
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="buttonStyle" class="form-label">Style</label>
+                                    <select class="form-select" id="buttonStyle">
+                                        <option value="primary" ${!buttonData || buttonData.style === 'primary' ? 'selected' : ''}>Primary</option>
+                                        <option value="secondary" ${buttonData && buttonData.style === 'secondary' ? 'selected' : ''}>Secondary</option>
+                                        <option value="success" ${buttonData && buttonData.style === 'success' ? 'selected' : ''}>Success</option>
+                                        <option value="danger" ${buttonData && buttonData.style === 'danger' ? 'selected' : ''}>Danger</option>
+                                        <option value="warning" ${buttonData && buttonData.style === 'warning' ? 'selected' : ''}>Warning</option>
+                                        <option value="info" ${buttonData && buttonData.style === 'info' ? 'selected' : ''}>Info</option>
+                                        <option value="light" ${buttonData && buttonData.style === 'light' ? 'selected' : ''}>Light</option>
+                                        <option value="dark" ${buttonData && buttonData.style === 'dark' ? 'selected' : ''}>Dark</option>
+                                    </select>
+                                </div>
+                            </form>
                         </div>
-                        <div class="mb-3">
-                            <label class="form-label">Button Style</label>
-                            <select class="form-select" id="buttonStyle">
-                                <option value="modern" ${currentButtonData?.style === 'modern' ? 'selected' : ''}>
-                                    Modern (Gradient)
-                                </option>
-                                <option value="tech" ${currentButtonData?.style === 'tech' ? 'selected' : ''}>
-                                    Tech (Geometric)
-                                </option>
-                                <option value="minimal" ${currentButtonData?.style === 'minimal' ? 'selected' : ''}>
-                                    Minimal (Clean)
-                                </option>
-                            </select>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" onclick="document.getElementById('${modalId}').remove();">Cancel</button>
+                            <button type="button" id="saveNavButton" class="btn btn-primary">Save</button>
                         </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" onclick="document.getElementById('${modalId}').remove()">Cancel</button>
-                        <button type="button" class="btn btn-primary" id="saveNavButton">Save</button>
                     </div>
                 </div>
             </div>
         `;
         
-        // Add modal to DOM
-        document.body.appendChild(modal);
+        // Add modal to the body
+        const modalContainer = document.createElement('div');
+        modalContainer.innerHTML = modalHTML;
+        document.body.appendChild(modalContainer.firstChild);
         
-        // Add backdrop click handler
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) {
-                modal.remove();
-            }
-        });
+        // Focus the first input
+        const buttonTextInput = document.getElementById('buttonText');
+        if (buttonTextInput) {
+            buttonTextInput.focus();
+            
+            // Add enter key handler
+            buttonTextInput.addEventListener('keyup', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    document.getElementById('saveNavButton').click();
+                }
+            });
+        }
         
-        // Add save button handler
-        document.getElementById('saveNavButton').addEventListener('click', async () => {
-            // Generate a new ID if this is a new button
-            const buttonId = isNewButton ? Date.now().toString() : navId;
-            await createAndSaveNavButton(buttonId, isNewButton);
-            modal.remove();
-        });
+        // Add click handler to save button
+        const saveButton = document.getElementById('saveNavButton');
+        if (saveButton) {
+            saveButton.addEventListener('click', async () => {
+                try {
+                    // Get form values
+                    const text = document.getElementById('buttonText').value;
+                    const targetPage = document.getElementById('buttonTarget').value;
+                    const position = document.getElementById('buttonPosition').value;
+                    const style = document.getElementById('buttonStyle').value;
+                    
+                    if (!text) {
+                        showAlert('Button text is required', 'danger');
+                        return;
+                    }
+                    
+                    // Show loading state
+                    saveButton.innerHTML = 'Saving...';
+                    saveButton.disabled = true;
+                    
+                    // Create or update the button
+                    await createAndSaveNavButton(navId, !navId, {
+                        text,
+                        targetPage,
+                        position,
+                        style
+                    });
+                    
+                    // Close the modal
+                    const modal = document.getElementById(modalId);
+                    if (modal) {
+                        modal.remove();
+                    }
+                    
+                    showAlert(`Navigation button ${navId ? 'updated' : 'created'} successfully!`, 'success');
+                } catch (error) {
+                    console.error('Error saving navigation button:', error);
+                    showAlert(`Failed to save button: ${error.message}`, 'danger');
+                    
+                    // Reset button state
+                    if (document.getElementById('saveNavButton')) {
+                        document.getElementById('saveNavButton').innerHTML = 'Save';
+                        document.getElementById('saveNavButton').disabled = false;
+                    }
+                }
+            });
+        }
         
+        // Close modal when clicking outside
+        const modal = document.getElementById(modalId);
+        if (modal) {
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    modal.remove();
+                }
+            });
+        }
     } catch (error) {
         console.error('Error showing nav button editor:', error);
-        showAlert('Failed to open navigation button editor', 'danger');
+        showAlert(`Failed to show button editor: ${error.message}`, 'danger');
     }
 }
 
 // Function to create and save navigation button
-async function createAndSaveNavButton(navId, isNew = false) {
-    console.log('Creating/saving nav button:', navId, 'isNew:', isNew);
-    
+async function createAndSaveNavButton(navId, isNew = false, buttonData = null) {
     try {
-        // Get the form values
-        const targetPage = document.getElementById('pageSelect').value;
-        const buttonText = document.getElementById('buttonText').value;
-        const buttonStyle = document.getElementById('buttonStyle').value;
+        console.log('Creating/saving nav button:', navId, 'isNew:', isNew);
         
-        // Create the button data
-        const buttonData = {
-            id: navId,
-            text: buttonText,
-            style: buttonStyle,
-            targetPage: targetPage,
-            position: { x: 20, y: 20 }
-        };
+        // Get button data from form if not provided
+        if (!buttonData) {
+            const buttonText = document.getElementById('buttonText')?.value;
+            const targetPage = document.getElementById('buttonTarget')?.value;
+            const buttonStyle = document.getElementById('buttonStyle')?.value;
+            
+            buttonData = {
+                text: buttonText || 'New Button',
+                targetPage: targetPage || 'home',
+                style: buttonStyle || 'primary',
+                position: 'right'
+            };
+        }
         
         console.log('Button data:', buttonData);
         
-        // Get the current page
-        const page = await getCurrentPage();
-        console.log('Current page:', page);
+        // Get current page data to update
+        const currentPageData = await getCurrentPage();
+        console.log('Current page:', currentPageData);
         
-        if (!page) {
-            throw new Error('Could not get current page data');
+        if (!currentPageData) {
+            throw new Error('Current page data not available');
         }
         
-        // Initialize navButtons array if it doesn't exist
-        if (!page.navButtons) {
-            page.navButtons = [];
+        // Initialize nav buttons array if it doesn't exist
+        if (!currentPageData.navButtons) {
+            currentPageData.navButtons = [];
         }
         
-        // Update or add the button
         if (isNew) {
-            page.navButtons.push(buttonData);
+            // Add new button
+            const newButton = {
+                id: navId || Date.now().toString(),
+                text: buttonData.text,
+                targetPage: buttonData.targetPage,
+                style: buttonData.style,
+                position: buttonData.position || 'right',
+                createdAt: new Date().toISOString()
+            };
+            
+            // Add the new button to the array
+            currentPageData.navButtons.push(newButton);
         } else {
-            const index = page.navButtons.findIndex(btn => btn.id === navId);
+            // Find and update existing button
+            const index = currentPageData.navButtons.findIndex(btn => btn.id === navId);
+            
             if (index !== -1) {
-                page.navButtons[index] = buttonData;
+                currentPageData.navButtons[index] = {
+                    ...currentPageData.navButtons[index],
+                    text: buttonData.text,
+                    targetPage: buttonData.targetPage,
+                    style: buttonData.style,
+                    position: buttonData.position || currentPageData.navButtons[index].position || 'right',
+                    updatedAt: new Date().toISOString()
+                };
             } else {
-                page.navButtons.push(buttonData);
+                console.warn('Nav button not found in page data, creating new one');
+                const newButton = {
+                    id: navId || Date.now().toString(),
+                    text: buttonData.text,
+                    targetPage: buttonData.targetPage,
+                    style: buttonData.style,
+                    position: buttonData.position || 'right',
+                    createdAt: new Date().toISOString()
+                };
+                currentPageData.navButtons.push(newButton);
             }
         }
         
-        // Update the page
-        await updatePage(page);
+        // Save updated page
+        await updatePage(currentPageData);
         
-        // Refresh the navigation buttons
-        await renderNavigationButtons(page.navButtons);
+        // Re-render navigation buttons
+        await renderNavigationButtons(currentPageData.navButtons);
         
-        showAlert(`Navigation button successfully ${isNew ? 'added' : 'updated'}!`, 'success');
-        return buttonData;
+        return true;
     } catch (error) {
         console.error('Error creating/saving navigation button:', error);
-        showAlert(`Failed to ${isNew ? 'add' : 'update'} navigation button: ${error.message}`, 'danger');
+        showAlert(`Failed to ${isNew ? 'create' : 'update'} navigation button: ${error.message}`, 'danger');
         throw error;
     }
 }
@@ -3556,200 +3731,108 @@ function renderPages(pages) {
 
 // Function to render snippets and navigation buttons on a page
 function renderSnippets(snippets = [], navButtons = []) {
-    // Get the appropriate container based on mode
-    let container = isPreviewMode ? document.getElementById('public-content') : document.getElementById('content');
-    
-    if (!container) {
-        console.error('Container element not found for rendering snippets. isPreviewMode:', isPreviewMode);
+    try {
+        console.log(`Rendering snippets to container: ${content ? content.id : 'unknown'} Count: ${snippets.length}`);
+        console.log(`Navigation buttons: ${navButtons.length}`);
         
-        // Create the container if it doesn't exist
-        container = document.createElement('div');
-        container.id = isPreviewMode ? 'public-content' : 'content';
-        container.className = 'page-content';
-        container.style.display = 'block';
-        container.style.position = 'relative';
-        container.style.minHeight = '500px';  // Set a minimum height
-        container.style.width = '100%';
+        // Get the content container - use either admin or public view
+        const container = userRole === 'admin' && !isPreviewMode ? content : publicContent;
         
-        // Append to root element or body
-        const root = document.getElementById('root');
-        if (root) {
-            root.appendChild(container);
-        } else {
-            document.body.appendChild(container);
+        if (!container) {
+            console.error('Target container not found for rendering snippets');
+            return;
         }
         
-        showAlert('Created new container for snippets', 'info');
-    }
-    
-    console.log('Rendering snippets to container:', container.id, 'Count:', snippets.length);
-    console.log('Navigation buttons:', navButtons.length);
-    
-    // First clear existing content
-    container.innerHTML = '';
-    
-    // Make sure container has proper styles for snippet positioning
-    container.style.position = 'relative';
-    container.style.minHeight = '500px';
-    
-    // Get container dimensions for relative positioning
-    let containerWidth = container.offsetWidth;
-    let containerHeight = container.offsetHeight;
-    
-    // If dimensions are zero (container not in DOM yet), use defaults
-    if (containerWidth <= 0) containerWidth = window.innerWidth || 1000; 
-    if (containerHeight <= 0) containerHeight = 500;
-    
-    console.log('Container dimensions:', containerWidth, 'x', containerHeight);
-    
-    // Add snippets to the container
-    if (snippets && Array.isArray(snippets)) {
-        snippets.forEach(snippet => {
-            if (!snippet || typeof snippet !== 'object') {
-                console.warn('Invalid snippet data:', snippet);
-                return; // Skip invalid snippets
+        // Log container dimensions for debugging positioning issues
+        const containerRect = container.getBoundingClientRect();
+        console.log(`Container dimensions: ${containerRect.width.toFixed(0)} x ${containerRect.height.toFixed(0)}`);
+        
+        // Clear existing content (except for navigation buttons, which we'll re-add)
+        const existingNavButtons = container.querySelectorAll('.draggable-nav-button');
+        Array.from(existingNavButtons).forEach(btn => btn.remove());
+        
+        // We're removing all snippets to ensure a clean slate
+        const existingSnippets = container.querySelectorAll('.snippet-container');
+        Array.from(existingSnippets).forEach(snippet => snippet.remove());
+        
+        // Check if we have no snippets to show
+        if ((!snippets || snippets.length === 0) && (!navButtons || navButtons.length === 0)) {
+            const emptyMessage = document.createElement('div');
+            emptyMessage.className = 'empty-page-message';
+            
+            if (userRole === 'admin' && !isPreviewMode) {
+                emptyMessage.innerHTML = `
+                    <p>This page is empty. Click the "Add Snippet" button to add content.</p>
+                    <button id="empty-page-add-snippet" class="btn btn-primary">Add Snippet</button>
+                `;
+                
+                container.appendChild(emptyMessage);
+                
+                // Add click handler for the add snippet button
+                const addSnippetBtn = emptyMessage.querySelector('#empty-page-add-snippet');
+                if (addSnippetBtn) {
+                    addSnippetBtn.addEventListener('click', () => {
+                        const addSnippetButton = document.getElementById('add-snippet-btn');
+                        if (addSnippetButton) {
+                            addSnippetButton.click();
+                        }
+                    });
+                }
+            } else {
+                emptyMessage.innerHTML = `
+                    <p>No content available on this page yet.</p>
+                `;
+                container.appendChild(emptyMessage);
             }
             
-            const snippetDiv = document.createElement('div');
-            snippetDiv.className = 'snippet';
-            snippetDiv.id = `snippet-${snippet.id}`;
-            snippetDiv.dataset.snippetId = snippet.id; // Add data attribute for easier access
-            
-            // Set position and size with bounds checking to prevent off-screen placement
-            let xPos = snippet.position?.x || 0;
-            let yPos = snippet.position?.y || 0;
-            
-            // Ensure snippets aren't off screen
-            const maxX = Math.max(containerWidth - 150, 50);
-            const maxY = Math.max(containerHeight - 150, 50);
-            
-            xPos = Math.min(Math.max(0, xPos), maxX);
-            yPos = Math.min(Math.max(0, yPos), maxY);
-            
-            // Store pixel positions
-            snippetDiv.dataset.originalX = xPos;
-            snippetDiv.dataset.originalY = yPos;
-            
-            // Use pixel positioning
-            snippetDiv.style.position = 'absolute';
-            snippetDiv.style.left = `${xPos}px`;
-            snippetDiv.style.top = `${yPos}px`;
-            
-            // Set size with sensible defaults
-            const width = snippet.size?.width || 400;
-            const height = snippet.size?.height || 300;
-            snippetDiv.style.width = `${width}px`;
-            snippetDiv.style.height = `${height}px`;
-            
-            // Create snippet content
-            const content = document.createElement('div');
-            content.className = 'snippet-content';
-            
-            const iframe = document.createElement('iframe');
-            iframe.id = `frame-${snippet.id}`;
-            iframe.style.width = '100%';
-            iframe.style.height = '100%';
-            iframe.style.border = 'none';
-            iframe.srcdoc = snippet.html || '<p>Empty snippet</p>';
-            // Update sandbox attributes to allow downloads and file operations
-            iframe.sandbox = 'allow-scripts allow-same-origin allow-modals allow-downloads allow-forms allow-popups';
-            
-            content.appendChild(iframe);
-            snippetDiv.appendChild(content);
-            
-            // Add controls if not in preview mode
-            if (!isPreviewMode) {
-                const controls = document.createElement('div');
-                controls.className = 'snippet-controls';
-                
-                // Use data attributes instead of inline onclick for better reliability
-                const editBtn = document.createElement('button');
-                editBtn.className = 'btn btn-sm btn-primary';
-                editBtn.textContent = 'Edit';
-                editBtn.dataset.action = 'edit';
-                editBtn.dataset.snippetId = snippet.id;
-                
-                const deleteBtn = document.createElement('button');
-                deleteBtn.className = 'btn btn-sm btn-danger';
-                deleteBtn.textContent = 'Delete';
-                deleteBtn.dataset.action = 'delete';
-                deleteBtn.dataset.snippetId = snippet.id;
-                
-                controls.appendChild(editBtn);
-                controls.appendChild(deleteBtn);
-                
-                // Add event listeners directly to the buttons
-                editBtn.addEventListener('click', () => editSnippet(snippet.id));
-                deleteBtn.addEventListener('click', () => deleteSnippet(snippet.id));
-                
-                const resizeHandle = document.createElement('div');
-                resizeHandle.className = 'resize-handle';
-                
-                snippetDiv.appendChild(controls);
-                snippetDiv.appendChild(resizeHandle);
-            }
-            
-            container.appendChild(snippetDiv);
-        });
-    } else {
-        console.warn('Invalid snippets array:', snippets);
-    }
-    
-    // If no snippets, show empty state
-    if (!snippets || !Array.isArray(snippets) || snippets.length === 0) {
-        console.log('Rendering empty state message');
-        const emptyState = document.createElement('div');
-        emptyState.className = 'empty-page-message text-center p-5 mt-5';
+            return;
+        }
         
-        // Set different messages based on role and mode
-        const isAdminView = userRole === 'admin' && !isPreviewMode;
-        const title = isAdminView ? 'This page is empty' : 'This page has no content yet';
-        const message = isAdminView ? 
-            'Use the "Add Snippet" button above to add content to this page.' : 
-            'The administrator has not added any content to this page yet.';
+        // Create a fragment to improve performance
+        const fragment = document.createDocumentFragment();
         
-        emptyState.innerHTML = `
-            <div class="card shadow">
-                <div class="card-body">
-                    <h4 class="card-title">${title}</h4>
-                    <p class="card-text">${message}</p>
-                    ${isAdminView ? '<button id="add-snippet-now" class="btn btn-success mt-3">Add Snippet Now</button>' : ''}
-                </div>
-            </div>
-        `;
+        // Add navigation buttons first
+        if (navButtons && navButtons.length > 0) {
+            navButtons.forEach(navButton => {
+                const button = createDraggableNavButton(navButton);
+                if (button) {
+                    fragment.appendChild(button);
+                }
+            });
+        }
         
-        container.appendChild(emptyState);
+        // Render each snippet
+        const renderPromises = snippets.map(snippet => renderSnippet(snippet));
         
-        // Add event listener to the "Add Snippet Now" button if it exists
-        if (isAdminView) {
-            const addSnippetNowBtn = emptyState.querySelector('#add-snippet-now');
-            if (addSnippetNowBtn) {
-                addSnippetNowBtn.addEventListener('click', () => {
-                    const html = prompt('Enter HTML for the snippet:');
-                    if (html) {
-                        addSnippet(html);
-                    }
+        // Wait for all snippets to be rendered
+        Promise.all(renderPromises)
+            .then(renderedSnippets => {
+                // Filter out any null results
+                const validSnippets = renderedSnippets.filter(s => s !== null);
+                
+                // Add all snippets to the fragment
+                validSnippets.forEach(snippetElement => {
+                    fragment.appendChild(snippetElement);
                 });
-            }
-        }
-    }
-
-    // Then render navigation buttons
-    if (navButtons && Array.isArray(navButtons) && typeof renderNavigationButtons === 'function') {
-        renderNavigationButtons(navButtons);
-    } else {
-        console.log('No navigation buttons to render or renderNavigationButtons function not available');
-    }
-
-    if (!isPreviewMode && typeof setupDragAndResize === 'function') {
-        setupDragAndResize();
-    } else {
-        console.log('Skip setupDragAndResize - isPreviewMode:', isPreviewMode);
-    }
-    
-    // After rendering snippets, initialize any other required functionality
-    if (typeof initializeFileDownloadHandler === 'function') {
-        setTimeout(initializeFileDownloadHandler, 500);
+                
+                // Append the fragment to the container
+                container.appendChild(fragment);
+                
+                // Setup drag and resize after all snippets are added to the DOM
+                setupDragAndResize();
+                
+                // Setup navigation button dragging if we're in admin mode
+                if (userRole === 'admin' && !isPreviewMode) {
+                    setupNavButtonDragging(container);
+                }
+            })
+            .catch(error => {
+                console.error('Error rendering snippets:', error);
+                showAlert('Error rendering page content', 'danger');
+            });
+    } catch (error) {
+        console.error('Error in renderSnippets:', error);
+        showAlert('Failed to render page content', 'danger');
     }
 }
 
@@ -3909,78 +3992,150 @@ const debouncedUpdateSize = debounce(async (snippetId, size) => {
 // Function to render a snippet on the page
 async function renderSnippet(snippetData) {
     try {
-        console.log('Rendering snippet:', snippetData);
+        if (!snippetData || !snippetData.id) {
+            console.error('Invalid snippet data provided to renderSnippet:', snippetData);
+            return null;
+        }
+
+        console.log('Rendering snippet:', snippetData.id);
         
-        // Create snippet container
-        const snippetContainer = document.createElement('div');
-        snippetContainer.className = 'snippet-container';
-        snippetContainer.id = `snippet-${snippetData.id}`;
-        snippetContainer.setAttribute('data-snippet-id', snippetData.id);
+        // Create container element
+        const container = document.createElement('div');
+        container.className = 'snippet-container';
+        container.setAttribute('data-id', snippetData.id);
         
         // Set position
         if (snippetData.position) {
-            snippetContainer.style.left = `${snippetData.position.left || 0}px`;
-            snippetContainer.style.top = `${snippetData.position.top || 0}px`;
+            container.style.left = `${snippetData.position.left || 0}px`;
+            container.style.top = `${snippetData.position.top || 0}px`;
         } else {
-            // Default position if none specified
-            snippetContainer.style.left = '50px';
-            snippetContainer.style.top = '50px';
+            console.warn('Snippet missing position:', snippetData.id);
+            container.style.left = '10px';
+            container.style.top = '10px';
         }
         
         // Set size
         if (snippetData.size) {
-            snippetContainer.style.width = `${snippetData.size.width || 300}px`;
-            snippetContainer.style.height = `${snippetData.size.height || 200}px`;
+            container.style.width = `${snippetData.size.width || 300}px`;
+            container.style.height = `${snippetData.size.height || 200}px`;
         } else {
-            // Default size if none specified
-            snippetContainer.style.width = '300px';
-            snippetContainer.style.height = '200px';
+            console.warn('Snippet missing size:', snippetData.id);
+            container.style.width = '300px';
+            container.style.height = '200px';
         }
         
         // Create content container
         const contentContainer = document.createElement('div');
         contentContainer.className = 'snippet-content';
         
-        // Process the HTML content (if any)
-        if (snippetData.html) {
-            // Sanitize and process the HTML
-            const sanitizedHtml = DOMPurify.sanitize(snippetData.html);
-            contentContainer.innerHTML = sanitizedHtml;
+        // Create a unique ID for the iframe to avoid conflicts and simplify targeting
+        const frameId = `frame-${Date.now()}`;
+        
+        // Create an iframe to safely render HTML content
+        const iframe = document.createElement('iframe');
+        iframe.id = frameId;
+        iframe.sandbox = 'allow-scripts allow-same-origin';
+        iframe.style.width = '100%';
+        iframe.style.height = '100%';
+        iframe.style.border = 'none';
+        iframe.style.overflow = 'hidden';
+        
+        // Add the iframe to the content container
+        contentContainer.appendChild(iframe);
+        
+        // Add controls if not in preview mode
+        if (!isPreviewMode && !userRole !== 'user') {
+            const controls = document.createElement('div');
+            controls.className = 'snippet-controls';
             
-            // Execute any scripts inside the content
-            const scripts = contentContainer.querySelectorAll('script');
-            scripts.forEach(oldScript => {
-                const newScript = document.createElement('script');
-                
-                // Copy all attributes from the old script to the new one
-                Array.from(oldScript.attributes).forEach(attr => {
-                    try {
-                        newScript.setAttribute(attr.name, attr.value);
-                    } catch (error) {
-                        console.error('Error setting script attribute:', error);
-                    }
-                });
-                
-                // Set the script content
-                try {
-                    newScript.textContent = oldScript.textContent;
-                    
-                    // Replace the old script with the new one
-                    oldScript.parentNode.replaceChild(newScript, oldScript);
-                } catch (error) {
-                    console.error('Error replacing script:', error);
-                }
-            });
+            // Edit button
+            const editBtn = document.createElement('button');
+            editBtn.className = 'btn btn-sm btn-primary';
+            editBtn.innerHTML = '<i class="fas fa-edit"></i> Edit';
+            editBtn.onclick = () => editSnippet(snippetData.id);
+            
+            // Delete button
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'btn btn-sm btn-danger ms-2';
+            deleteBtn.innerHTML = '<i class="fas fa-trash"></i> Delete';
+            deleteBtn.onclick = () => deleteSnippet(snippetData.id);
+            
+            controls.appendChild(editBtn);
+            controls.appendChild(deleteBtn);
+            container.appendChild(controls);
         }
         
-        // Append content to snippet container
-        snippetContainer.appendChild(contentContainer);
+        // Add resize handle
+        const resizeHandle = document.createElement('div');
+        resizeHandle.className = 'resize-handle se';
+        container.appendChild(resizeHandle);
         
-        // Return the created snippet container
-        return snippetContainer;
+        // Add the content container to the main container
+        container.appendChild(contentContainer);
+        
+        // Wait for the iframe to load before setting its content
+        iframe.onload = () => {
+            try {
+                // Get sanitized HTML content
+                let htmlContent = '';
+                if (snippetData.html) {
+                    // Use DOM Purify to sanitize the HTML (only if available)
+                    if (typeof DOMPurify !== 'undefined') {
+                        htmlContent = DOMPurify.sanitize(snippetData.html);
+                    } else {
+                        htmlContent = snippetData.html;
+                        console.warn('DOMPurify not available, using unsafe HTML');
+                    }
+                } else {
+                    htmlContent = '<p>Empty snippet. Click edit to add content.</p>';
+                }
+                
+                // Add helper script to handle downloads inside iframe (if any)
+                initializeFileDownloadHandler();
+                
+                // Write the content to the iframe
+                const iframeDoc = iframe.contentWindow.document;
+                iframeDoc.open();
+                iframeDoc.write(`<!DOCTYPE html>
+                <html>
+                <head>
+                    <base target="_parent">
+                    <style>
+                        body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
+                    </style>
+                </head>
+                <body>${htmlContent}</body>
+                </html>`);
+                iframeDoc.close();
+                
+                // Inject a helper script into the iframe if there are downloadable elements
+                injectHelperScript(iframe);
+            } catch (error) {
+                console.error('Error setting iframe content:', error);
+                
+                // Show an error message in the iframe
+                const iframeDoc = iframe.contentWindow.document;
+                iframeDoc.open();
+                iframeDoc.write(`<!DOCTYPE html>
+                <html>
+                <head>
+                    <style>
+                        body { margin: 0; padding: 10px; font-family: Arial, sans-serif; color: #721c24; background-color: #f8d7da; }
+                        .error { border: 1px solid #f5c6cb; padding: 10px; border-radius: 4px; }
+                    </style>
+                </head>
+                <body>
+                    <div class="error">Error rendering content: ${error.message}</div>
+                </body>
+                </html>`);
+                iframeDoc.close();
+            }
+        };
+        
+        return container;
     } catch (error) {
-        console.error('Error creating snippet container:', error);
-        return document.createElement('div'); // Return an empty div as fallback
+        console.error('Error rendering snippet:', error);
+        return null;
     }
 }
 

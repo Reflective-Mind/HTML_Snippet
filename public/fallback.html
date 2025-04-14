@@ -17,8 +17,9 @@
         }
     </style>
     <script>
-        // Global API URL for all fetch calls
-        window.API_BASE_URL = 'https://mbti-render.onrender.com';
+        // Global API URL for all fetch calls - use relative URL by default
+        window.API_BASE_URL = window.location.origin;
+        console.log('API base URL set to:', window.API_BASE_URL);
     </script>
 </head>
 <body>
