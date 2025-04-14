@@ -617,19 +617,38 @@ async function loadPageContent(pageId) {
     
     try {
         // Ensure the content container exists
-        const container = document.getElementById('content');
+        let container = document.getElementById('content');
         if (!container) {
-            throw new Error('Content container not found. Please refresh the page.');
+            console.warn('Content container not found, creating one');
+            container = document.createElement('div');
+            container.id = 'content';
+            container.className = 'page-content';
+            container.style.display = 'block';
+            
+            // Try to append to root
+            const root = document.getElementById('root');
+            if (root) {
+                root.appendChild(container);
+            } else {
+                // If no root, append to body
+                document.body.appendChild(container);
+            }
         }
         
         // Special case for admin dashboard
         if (pageId === 'admin' && userRole === 'admin') {
-            loadAdminDashboard();
+            if (typeof loadAdminDashboard === 'function') {
+                loadAdminDashboard();
+            } else {
+                console.warn('loadAdminDashboard function not found');
+                showAlert('Admin dashboard functionality not available', 'warning');
+            }
             return;
         }
         
         // First, clear any existing content including dashboard
         container.innerHTML = '';
+        container.style.display = 'block'; // Ensure it's visible
         
         // Remove any existing dashboard that might be present
         const existingDashboard = document.querySelector('.admin-stats');
@@ -637,82 +656,92 @@ async function loadPageContent(pageId) {
             existingDashboard.remove();
         }
         
-        const page = await makeRequest(`/api/pages/${pageId}`);
-        if (!page) {
-            throw new Error('Page not found or empty response received');
-        }
-
-        // Update current page
-        currentPage = pageId;
-        localStorage.setItem('currentPage', pageId);
-        
-        // Render content
-        console.log('Page data:', page);
-        
-        // Reset any error messages
-        const errorContainer = document.getElementById('error-container');
-        if (errorContainer) {
-            errorContainer.innerHTML = '';
-            errorContainer.style.display = 'none';
-        }
-        
-        // Check if snippets need position adjustment
-        if (page.snippets && Array.isArray(page.snippets)) {
-            // Fix any snippet positions that are off-screen
-            page.snippets = page.snippets.map(snippet => {
-                if (!snippet.position) {
-                    snippet.position = { x: 50, y: 50 };
-                }
-                
-                // Ensure snippets aren't too far to the right or left
-                if (snippet.position.x > 1500 || snippet.position.x < 0) {
-                    snippet.position.x = 50;
-                }
-                
-                return snippet;
-            });
-        }
-        
-        // Render the snippets and navigation buttons
-        renderSnippets(page.snippets || [], page.navButtons || []);
-        
-        // Initialize file download handler for new snippets
-        setTimeout(initializeFileDownloadHandler, 1000);
-
-        // Update page navigation buttons
-        const pageButtons = document.querySelectorAll('.page-button');
-        pageButtons.forEach(btn => {
-            const buttonPageId = btn.getAttribute('data-page-id') || btn.textContent.trim().toLowerCase();
-            const isActive = buttonPageId === pageId.toLowerCase();
-            btn.classList.toggle('btn-primary', isActive);
-            btn.classList.toggle('btn-outline-primary', !isActive);
-        });
-    } catch (error) {
-        console.error('Error loading page content:', error);
-        
-        // Create error message container if it doesn't exist
-        let errorContainer = document.getElementById('error-container');
-        if (!errorContainer) {
-            errorContainer = document.createElement('div');
-            errorContainer.id = 'error-container';
-            errorContainer.className = 'alert alert-danger mt-3';
+        try {
+            const page = await makeRequest(`/api/pages/${pageId}`);
+            if (!page) {
+                throw new Error('Page not found or empty response received');
+            }
             
-            const contentArea = document.getElementById('content');
-            if (contentArea) {
-                contentArea.innerHTML = '';
-                contentArea.appendChild(errorContainer);
-            } else {
-                // If content area is missing, try to add to a parent element
-                const adminPanel = document.getElementById('admin-panel');
-                if (adminPanel) {
-                    adminPanel.appendChild(errorContainer);
+            // Update current page
+            currentPage = pageId;
+            localStorage.setItem('currentPage', pageId);
+            
+            // Render content
+            console.log('Page data:', page);
+            
+            // Reset any error messages
+            const errorContainer = document.getElementById('error-container');
+            if (errorContainer) {
+                errorContainer.innerHTML = '';
+                errorContainer.style.display = 'none';
+            }
+            
+            // Check if snippets need position adjustment
+            if (page.snippets && Array.isArray(page.snippets)) {
+                // Fix any snippet positions that are off-screen
+                page.snippets = page.snippets.map(snippet => {
+                    if (!snippet.position) {
+                        snippet.position = { x: 50, y: 50 };
+                    }
+                    
+                    // Ensure snippets aren't too far to the right or left
+                    if (snippet.position.x > 1500 || snippet.position.x < 0) {
+                        snippet.position.x = 50;
+                    }
+                    
+                    if (snippet.position.y < 0) {
+                        snippet.position.y = 50;
+                    }
+                    
+                    return snippet;
+                });
+            }
+            
+            // Render the snippets and navigation buttons
+            renderSnippets(page.snippets || [], page.navButtons || []);
+            
+            // Initialize file download handler for new snippets
+            if (typeof initializeFileDownloadHandler === 'function') {
+                setTimeout(initializeFileDownloadHandler, 1000);
+            }
+    
+            // Update page navigation buttons
+            const pageButtons = document.querySelectorAll('.page-button');
+            pageButtons.forEach(btn => {
+                const buttonPageId = btn.getAttribute('data-page-id') || btn.textContent.trim().toLowerCase();
+                const isActive = buttonPageId === pageId.toLowerCase();
+                btn.classList.toggle('btn-primary', isActive);
+                btn.classList.toggle('btn-outline-primary', !isActive);
+            });
+        } catch (error) {
+            console.error('Error loading page content:', error);
+            
+            // If this is a page not found error, try to create the page
+            if (error.message.includes('not found') && pageId === 'home') {
+                try {
+                    console.log('Creating home page as it was not found');
+                    await createPage('Home');
+                    await loadPageContent('home');
+                    return;
+                } catch (createError) {
+                    console.error('Failed to create home page:', createError);
                 }
             }
+            
+            // Show empty state with error
+            container.innerHTML = `
+                <div class="alert alert-warning mt-4">
+                    <h4>Page could not be loaded</h4>
+                    <p>${error.message || 'Unknown error'}</p>
+                    <button class="btn btn-primary mt-3" onclick="navigateToPage('home')">Go to Home Page</button>
+                </div>
+            `;
+            
+            showAlert(`Failed to load page: ${error.message}`, 'danger');
         }
-        
-        errorContainer.style.display = 'block';
-        errorContainer.innerHTML = `<strong>Error:</strong> Failed to load page: ${error.message}`;
-        showAlert(`Failed to load page: ${error.message}`, 'danger');
+    } catch (error) {
+        console.error('Critical error in loadPageContent:', error);
+        showAlert('Critical error loading page content. Please refresh the page.', 'danger');
     }
 }
 
@@ -1026,12 +1055,30 @@ function renderPages(pages) {
 }
 
 function renderSnippets(snippets = [], navButtons = []) {
-    const container = isPreviewMode ? document.getElementById('public-content') : document.getElementById('content');
+    // Get the appropriate container based on mode
+    let container = isPreviewMode ? document.getElementById('public-content') : document.getElementById('content');
     
     if (!container) {
         console.error('Container element not found for rendering snippets. isPreviewMode:', isPreviewMode);
-        showAlert('Failed to load page: Container element not found', 'danger');
-        return;
+        
+        // Create the container if it doesn't exist
+        container = document.createElement('div');
+        container.id = isPreviewMode ? 'public-content' : 'content';
+        container.className = 'page-content';
+        container.style.display = 'block';
+        container.style.position = 'relative';
+        container.style.minHeight = '500px';  // Set a minimum height
+        container.style.width = '100%';
+        
+        // Append to root element or body
+        const root = document.getElementById('root');
+        if (root) {
+            root.appendChild(container);
+        } else {
+            document.body.appendChild(container);
+        }
+        
+        showAlert('Created new container for snippets', 'info');
     }
     
     console.log('Rendering snippets to container:', container.id, 'Count:', snippets.length);
@@ -1039,9 +1086,18 @@ function renderSnippets(snippets = [], navButtons = []) {
     // First clear existing content
     container.innerHTML = '';
     
+    // Make sure container has proper styles for snippet positioning
+    container.style.position = 'relative';
+    container.style.minHeight = '500px';
+    
     // Get container dimensions for relative positioning
-    const containerWidth = container.offsetWidth;
-    const containerHeight = container.offsetHeight;
+    let containerWidth = container.offsetWidth;
+    let containerHeight = container.offsetHeight;
+    
+    // If dimensions are zero (container not in DOM yet), use defaults
+    if (containerWidth <= 0) containerWidth = window.innerWidth || 1000; 
+    if (containerHeight <= 0) containerHeight = 500;
+    
     console.log('Container dimensions:', containerWidth, 'x', containerHeight);
     
     // Add snippets to the container
@@ -1055,37 +1111,27 @@ function renderSnippets(snippets = [], navButtons = []) {
         let xPos = snippet.position?.x || 0;
         let yPos = snippet.position?.y || 0;
         
-        // Ensure snippets aren't too far to the right or off screen
-        if (xPos > containerWidth - 100) xPos = 50;
-        if (yPos > containerHeight - 100) yPos = 50;
+        // Ensure snippets aren't off screen
+        const maxX = Math.max(containerWidth - 150, 50);
+        const maxY = Math.max(containerHeight - 150, 50);
         
-        // Convert absolute positions to percentage-based positions for better responsiveness
-        // Only if the container has dimensions (avoid division by zero)
-        if (containerWidth > 0 && containerHeight > 0) {
-            // Store original pixel positions as data attributes for editing
-            snippetDiv.dataset.originalX = xPos;
-            snippetDiv.dataset.originalY = yPos;
-            
-            // Calculate percentage positions
-            const xPercent = (xPos / containerWidth) * 100;
-            const yPercent = (yPos / containerHeight) * 100;
-            
-            // Apply percentage positioning in preview mode, pixel positioning in edit mode
-            if (isPreviewMode) {
-                snippetDiv.style.left = `${xPercent}%`;
-                snippetDiv.style.top = `${yPercent}%`;
-            } else {
-                snippetDiv.style.left = `${xPos}px`;
-                snippetDiv.style.top = `${yPos}px`;
-            }
-        } else {
-            // Fallback to pixel positioning if container dimensions aren't available
-            snippetDiv.style.left = `${xPos}px`;
-            snippetDiv.style.top = `${yPos}px`;
-        }
+        xPos = Math.min(Math.max(0, xPos), maxX);
+        yPos = Math.min(Math.max(0, yPos), maxY);
         
-        snippetDiv.style.width = `${snippet.size?.width || 400}px`;
-        snippetDiv.style.height = `${snippet.size?.height || 300}px`;
+        // Store pixel positions
+        snippetDiv.dataset.originalX = xPos;
+        snippetDiv.dataset.originalY = yPos;
+        
+        // Use pixel positioning
+        snippetDiv.style.position = 'absolute';
+        snippetDiv.style.left = `${xPos}px`;
+        snippetDiv.style.top = `${yPos}px`;
+        
+        // Set size with sensible defaults
+        const width = snippet.size?.width || 400;
+        const height = snippet.size?.height || 300;
+        snippetDiv.style.width = `${width}px`;
+        snippetDiv.style.height = `${height}px`;
         
         // Create snippet content
         const content = document.createElement('div');
@@ -1096,7 +1142,7 @@ function renderSnippets(snippets = [], navButtons = []) {
         iframe.style.width = '100%';
         iframe.style.height = '100%';
         iframe.style.border = 'none';
-        iframe.srcdoc = snippet.html;
+        iframe.srcdoc = snippet.html || '<p>Empty snippet</p>';
         // Update sandbox attributes to allow downloads and file operations
         iframe.sandbox = 'allow-scripts allow-same-origin allow-modals allow-downloads allow-forms allow-popups';
         
@@ -1137,11 +1183,24 @@ function renderSnippets(snippets = [], navButtons = []) {
         
         container.appendChild(snippetDiv);
     });
+    
+    // If no snippets, show empty state
+    if (snippets.length === 0) {
+        const emptyState = document.createElement('div');
+        emptyState.className = 'empty-page-message text-center p-5';
+        emptyState.innerHTML = `
+            <h4>${isPreviewMode ? 'This page has no content yet' : 'This page is empty'}</h4>
+            <p>${isPreviewMode ? 'The administrator has not added any content to this page.' : 'Use the buttons above to add content snippets'}</p>
+        `;
+        container.appendChild(emptyState);
+    }
 
     // Then render navigation buttons
-    renderNavigationButtons(navButtons);
+    if (typeof renderNavigationButtons === 'function') {
+        renderNavigationButtons(navButtons);
+    }
 
-    if (!isPreviewMode) {
+    if (!isPreviewMode && typeof setupDragAndResize === 'function') {
         setupDragAndResize();
     }
     
@@ -1441,10 +1500,18 @@ function setupDragAndResize() {
 }
 
 function showAlert(message, type) {
-    const alertContainer = document.getElementById('alert-container');
+    // Ensure alert container exists
+    let alertContainer = document.getElementById('alert-container');
     if (!alertContainer) {
-        console.error('Alert container not found');
-        return;
+        console.log('Creating alert container on demand');
+        alertContainer = document.createElement('div');
+        alertContainer.id = 'alert-container';
+        alertContainer.style.position = 'fixed';
+        alertContainer.style.top = '20px';
+        alertContainer.style.right = '20px';
+        alertContainer.style.zIndex = '9999';
+        alertContainer.style.width = '350px';
+        document.body.appendChild(alertContainer);
     }
     
     const alert = document.createElement('div');
@@ -1465,13 +1532,13 @@ function showAlert(message, type) {
     }, 5000);
 }
 
-// Event Handlers
-document.getElementById('addSnippetBtn').addEventListener('click', () => {
-    const html = prompt('Enter HTML code for the snippet:');
-    if (html) addSnippet(html);
-});
-
-document.getElementById('preview-toggle-btn').addEventListener('click', togglePreviewMode);
+// Event Handlers - Using event delegation instead of direct attachment
+// These lines were causing "Cannot read properties of null" errors since the elements might not exist
+// document.getElementById('addSnippetBtn').addEventListener('click', () => {
+//     const html = prompt('Enter HTML code for the snippet:');
+//     if (html) addSnippet(html);
+// });
+// document.getElementById('preview-toggle-btn').addEventListener('click', togglePreviewMode);
 
 // Update the navigation functions
 function navigateToPage(pageId) {
@@ -2832,4 +2899,57 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize file download handler
     initializeFileDownloadHandler();
 });
+
+// Safe event handlers with null checks
+function safeAddEventListener(selector, event, handler) {
+    const element = document.getElementById(selector);
+    if (element) {
+        element.addEventListener(event, handler);
+        return true;
+    } else {
+        console.warn(`Element with ID "${selector}" not found, couldn't add ${event} listener`);
+        return false;
+    }
+}
+
+// Add event delegation setup function
+function setupEventDelegation() {
+    // Add event delegation for page navigation
+    document.addEventListener('click', function(e) {
+        // Handle navigation button clicks
+        if (e.target.matches('.page-button') || e.target.closest('.page-button')) {
+            const button = e.target.matches('.page-button') ? e.target : e.target.closest('.page-button');
+            const pageId = button.getAttribute('data-page-id');
+            if (pageId) {
+                console.log('Page navigation via delegation for:', pageId);
+                navigateToPage(pageId);
+            }
+        }
+        
+        // Handle add snippet button clicks
+        if (e.target.matches('#addSnippetBtn') || e.target.closest('#addSnippetBtn')) {
+            const html = prompt('Enter HTML code for the snippet:');
+            if (html) addSnippet(html);
+            e.preventDefault();
+        }
+        
+        // Handle preview toggle button clicks
+        if (e.target.matches('#preview-toggle-btn') || e.target.closest('#preview-toggle-btn')) {
+            if (typeof togglePreviewMode === 'function') {
+                togglePreviewMode();
+            } else {
+                console.warn('togglePreviewMode function not available');
+            }
+            e.preventDefault();
+        }
+        
+        // Handle add page button clicks
+        if (e.target.matches('#addPageBtn') || e.target.closest('#addPageBtn')) {
+            showCreatePageModal();
+            e.preventDefault();
+        }
+    });
+    
+    console.log('Event delegation setup complete');
+}
   
