@@ -35,9 +35,6 @@
     "env": {
         "REACT_APP_API_URL": "https://mbti-render.onrender.com",
         "REACT_APP_SOCKET_URL": "https://mbti-render.onrender.com",
-        "CHAT_SOCKET_URL": "https://mbti-render.onrender.com",
-        "CHAT_API_URL": "https://mbti-render.onrender.com/api",
-        "REACT_APP_CHAT_API_URL": "https://mbti-render.onrender.com/api",
         "NODE_ENV": "production"
     }
 } 

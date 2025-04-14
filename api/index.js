@@ -2,12 +2,17 @@
 const express = require('express');
 const path = require('path');
 const cors = require('cors');
+const axios = require('axios');
 
 // Create a new Express app specifically for Vercel
 const app = express();
 
 // Basic middleware
-app.use(cors());
+app.use(cors({
+  origin: '*',  // Allow all origins for now
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -35,6 +40,7 @@ app.get('/', (req, res) => {
     status: "active",
     mainApiUrl: RENDER_API_URL,
     frontendUrl: req.headers.host,
+    repositoryUrl: "https://github.com/Reflective-Mind/HTML_Snippet",
     info: "This Vercel deployment is a frontend mirror of the main application running on Render.",
     endpoints: {
       api: `${RENDER_API_URL}/api`,
@@ -47,9 +53,8 @@ app.get('/', (req, res) => {
 // API proxy for simple endpoints
 app.get('/api/stats', async (req, res) => {
   try {
-    const response = await fetch(`${RENDER_API_URL}/api/stats`);
-    const data = await response.json();
-    res.json(data);
+    const response = await axios.get(`${RENDER_API_URL}/api/stats`);
+    res.json(response.data);
   } catch (error) {
     res.status(500).json({
       error: 'Failed to fetch stats from Render API',
@@ -60,15 +65,43 @@ app.get('/api/stats', async (req, res) => {
 
 // Handle the app route - serve the local index.html with proper env vars
 app.get('/app', (req, res) => {
-  // You can either redirect to Render or serve your local app
-  // For now, we'll redirect to the Render app
+  // We'll redirect to the Render app
   res.redirect(`${RENDER_API_URL}/app`);
 });
 
-// Redirect API routes to Render
-app.all('/api/*', (req, res) => {
-  const targetUrl = `${RENDER_API_URL}${req.url}`;
-  res.redirect(targetUrl);
+// Proxy API routes to Render instead of redirecting
+app.all('/api/*', async (req, res) => {
+  try {
+    const targetUrl = `${RENDER_API_URL}${req.url}`;
+    
+    // Forward the request to Render
+    const axiosConfig = {
+      method: req.method,
+      url: targetUrl,
+      headers: {
+        'Content-Type': req.headers['content-type'] || 'application/json',
+        'Authorization': req.headers['authorization'] || '',
+      },
+      data: req.method !== 'GET' ? req.body : undefined,
+      params: req.method === 'GET' ? req.query : undefined,
+      responseType: 'json'
+    };
+    
+    const response = await axios(axiosConfig);
+    
+    // Forward the response back to the client
+    res.status(response.status).json(response.data);
+  } catch (error) {
+    // Handle errors properly
+    const status = error.response?.status || 500;
+    const message = error.response?.data?.message || error.message;
+    
+    res.status(status).json({
+      error: 'API Proxy Error',
+      message: message,
+      renderApiUrl: RENDER_API_URL
+    });
+  }
 });
 
 // Error handling middleware

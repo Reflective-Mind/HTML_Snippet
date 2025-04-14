@@ -1,6 +1,86 @@
 # HTML Snippet Builder
 
-A website builder that manages HTML snippets with admin capabilities.
+A web application for creating, managing and sharing HTML snippets. This application helps users build and organize HTML components that can be easily integrated into other websites.
+
+## Deployment Architecture
+
+This application uses a split architecture deployment:
+
+- **Backend (API Server)**: Deployed on Render
+- **Frontend (Static Assets)**: Deployed on Vercel
+
+## Environment Variables
+
+### Backend (Render) Environment Variables
+- `PORT`: The port on which the server runs (default: 10000)
+- `MONGODB_URI`: MongoDB connection string
+- `JWT_SECRET`: Secret key for signing JWT tokens
+- `MISTRAL_API_KEY`: API key for Mistral AI integration
+- `NODE_ENV`: Environment mode (development/production)
+- `REACT_APP_API_URL`: URL for the API endpoints (same as Render URL)
+- `REACT_APP_SOCKET_URL`: URL for WebSocket connections (same as Render URL)
+
+### Frontend (Vercel) Environment Variables
+- `REACT_APP_API_URL`: URL of the backend API (should point to Render URL)
+- `REACT_APP_SOCKET_URL`: URL for WebSocket connections (should point to Render URL)
+- `NODE_ENV`: Environment mode (typically "production")
+
+## Deployment Instructions
+
+### Deploying the Backend to Render
+1. Fork or clone this repository
+2. Connect your GitHub account to Render
+3. Create a new Web Service in Render
+4. Link to your repository
+5. Set the following configuration:
+   - Name: `mbti-render` (or your preferred name)
+   - Build Command: `npm install && npm run setup-static`
+   - Start Command: `node server.js`
+   - Add all environment variables listed in the Backend section above
+6. Click "Create Web Service"
+
+### Deploying the Frontend to Vercel
+1. Fork or clone this repository
+2. Connect your GitHub account to Vercel
+3. Create a new project in Vercel
+4. Link to your repository
+5. Set the following configuration:
+   - Framework Preset: Other
+   - Build Command: None (uses vercel.json configuration)
+   - Output Directory: public
+   - Add all environment variables listed in the Frontend section above
+6. Click "Deploy"
+
+## Local Development
+
+1. Clone the repository
+```
+git clone https://github.com/Reflective-Mind/HTML_Snippet.git
+cd HTML_Snippet
+```
+
+2. Install dependencies
+```
+npm install
+```
+
+3. Set up environment variables
+Create a `.env` file in the root directory with the variables listed above.
+
+4. Start the development server
+```
+npm run dev
+```
+
+## Troubleshooting Deployment
+
+If you encounter issues with the deployment:
+
+1. Verify all environment variables are correctly set in both Render and Vercel
+2. Check that MongoDB connection is working correctly
+3. Ensure the CORS settings allow communication between the backend and frontend
+4. Check the build logs in both Render and Vercel for any errors
+5. Verify that the repository URL in the server settings is correct
 
 ## Quick Start
 

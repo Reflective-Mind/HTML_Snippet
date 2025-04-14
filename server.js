@@ -316,32 +316,42 @@ app.get('*', (req, res, next) => {
 // MongoDB connection with better error handling and monitoring
 let mongoConnected = false;
 let connectionAttempted = false;
+let cachedConnection = null;
 
 // Function to connect to MongoDB
 async function connectToMongoDB() {
-    if (connectionAttempted) return;
+    if (cachedConnection) {
+        console.log('✅ Using cached MongoDB connection');
+        return cachedConnection;
+    }
+    
+    if (connectionAttempted && !mongoConnected) {
+        console.log('⚠️ Connection already attempted but failed, retrying...');
+    }
+    
     connectionAttempted = true;
     
     console.log('🔄 Attempting to connect to MongoDB...');
     console.log('📁 Database URI:', process.env.MONGODB_URI ? 'Set (hidden for security)' : 'Not set');
-    console.log('📁 Database Name:', process.env.DB_NAME || 'html-snippet-builder');
     console.log('🔄 Environment:', process.env.NODE_ENV);
 
     try {
-        await mongoose.connect(process.env.MONGODB_URI, {
+        const connection = await mongoose.connect(process.env.MONGODB_URI, {
             useNewUrlParser: true,
             useUnifiedTopology: true,
             serverSelectionTimeoutMS: 15000,
             heartbeatFrequencyMS: 10000,
-            dbName: process.env.DB_NAME || 'html-snippet-builder',
             retryWrites: true,
             w: 'majority',
-            maxPoolSize: 10,
+            // Optimize connection pool for environment
+            maxPoolSize: process.env.NODE_ENV === 'production' ? 10 : 5,
+            minPoolSize: process.env.NODE_ENV === 'production' ? 5 : 1,
             socketTimeoutMS: 30000,
         });
 
         console.log('✅ Connected to MongoDB successfully');
         mongoConnected = true;
+        cachedConnection = connection;
         
         // Create default users and check MongoDB connection before proceeding
         try {
@@ -368,27 +378,35 @@ async function connectToMongoDB() {
         } catch (initError) {
             console.error('❌ Error during initialization:', initError);
         }
+        
+        return connection;
     } catch (error) {
         console.error('❌ MongoDB connection error:', error);
         console.error('Stack:', error.stack);
         mongoConnected = false;
+        cachedConnection = null;
+        throw error;
     }
 }
 
-// Connect to MongoDB immediately if we're not in a serverless environment
+// Connect to MongoDB based on environment
 if (process.env.NODE_ENV !== 'vercel') {
-    connectToMongoDB();
+    // For non-serverless environments, connect immediately
+    connectToMongoDB().catch(err => {
+        console.error('Failed to connect to MongoDB on startup:', err);
+    });
 } else {
     console.log('⏳ MongoDB connection deferred in serverless environment');
 }
 
-// Add a middleware to ensure MongoDB is connected for each request in serverless environment
+// Add a middleware to handle MongoDB connection in serverless environments
 app.use(async (req, res, next) => {
-    if (process.env.NODE_ENV === 'vercel' && !mongoConnected) {
+    if (!mongoConnected) {
         try {
             await connectToMongoDB();
         } catch (err) {
             console.error('Failed to connect to MongoDB in middleware:', err);
+            // Continue anyway to let other middleware potentially handle the error
         }
     }
     next();
@@ -479,9 +497,9 @@ async function initializeSettings() {
             { key: 'CHAT_SOCKET_URL', value: process.env.CHAT_SOCKET_URL || 'ws://localhost:10000', description: 'Chat WebSocket URL', category: 'chat' },
             { key: 'CHAT_API_URL', value: process.env.CHAT_API_URL || 'http://localhost:10000/api', description: 'Chat API URL', category: 'chat' },
             { key: 'REACT_APP_CHAT_API_URL', value: process.env.REACT_APP_CHAT_API_URL || 'http://localhost:10000/api', description: 'React Chat API URL', category: 'chat' },
-            { key: 'REPOSITORY_URL', value: 'https://github.com/Reflective-Mind/Ken-Ultimate.git', description: 'Git repository URL', category: 'deployment' },
+            { key: 'REPOSITORY_URL', value: 'https://github.com/Reflective-Mind/HTML_Snippet', description: 'Git repository URL', category: 'deployment' },
             { key: 'DEPLOYMENT_PLATFORM', value: 'render', description: 'Deployment platform (render/vercel)', category: 'deployment' },
-            { key: 'DEPLOYMENT_URL', value: 'https://html-snippet-builder.onrender.com', description: 'Production deployment URL', category: 'deployment' },
+            { key: 'DEPLOYMENT_URL', value: 'https://mbti-render.onrender.com', description: 'Production deployment URL', category: 'deployment' },
             { key: 'API_VERSION', value: '1.0.0', description: 'API version number', category: 'api' }
         ];
 
