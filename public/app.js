@@ -732,7 +732,7 @@ async function makeRequest(url, options = {}) {
         
         // Handle request timeout
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
         
         try {
             options.signal = controller.signal;
@@ -743,11 +743,31 @@ async function makeRequest(url, options = {}) {
             
             // Handle common HTTP errors
             if (response.status === 401) {
-                localStorage.removeItem('token');
-                localStorage.removeItem('userRole');
-                showAlert('Session expired. Please login again.', 'warning');
-                updateView();
-                throw new Error('Session expired');
+                // Save the current token for comparison
+                const currentToken = localStorage.getItem('token');
+                
+                if (currentToken) {
+                    // Only handle session expiry for non-critical pages
+                    if (!url.includes('/api/login')) {
+                        showAlert('Your session may have expired. Attempting to refresh...', 'warning', 5000);
+                        
+                        // Try to silently refresh the auth - for now we'll just maintain the session
+                        // We don't remove the token here to prevent multiple logouts
+                        setTimeout(() => {
+                            // Check if we're still logged in after a delay (someone might have logged in again)
+                            if (localStorage.getItem('token') === currentToken) {
+                                // If still using the same token, we need to redirect to login
+                                console.warn('Session expired and could not be refreshed');
+                                showAlert('Session expired. Please log in again.', 'warning', 5000);
+                                updateView();
+                            }
+                        }, 1000);
+                    }
+                    
+                    throw new Error('Session expired');
+                } else {
+                    throw new Error('Authentication required');
+                }
             }
             
             if (response.status === 404) {
@@ -1222,12 +1242,12 @@ function showCreatePageModal() {
     
     // Create new modal
     const modalHTML = `
-        <div class="modal fade" id="${modalId}" tabindex="-1" aria-labelledby="${modalId}Label" aria-hidden="true">
+        <div class="modal fade show" id="${modalId}" tabindex="-1" aria-labelledby="${modalId}Label" aria-hidden="true" style="display: block; background-color: rgba(0,0,0,0.5);">
             <div class="modal-dialog">
                 <div class="modal-content">
                     <div class="modal-header">
                         <h5 class="modal-title" id="${modalId}Label">Create New Page</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" onclick="document.getElementById('${modalId}').remove();"></button>
                     </div>
                     <div class="modal-body">
                         <form id="createPageForm">
@@ -1238,7 +1258,7 @@ function showCreatePageModal() {
                         </form>
                     </div>
                     <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-secondary" onclick="document.getElementById('${modalId}').remove();">Cancel</button>
                         <button type="button" id="createPageBtn" class="btn btn-primary">Create</button>
                     </div>
                 </div>
@@ -1250,9 +1270,6 @@ function showCreatePageModal() {
     document.body.insertAdjacentHTML('beforeend', modalHTML);
     modalElement = document.getElementById(modalId);
     
-    // Initialize Bootstrap modal
-    const modal = new bootstrap.Modal(modalElement);
-    
     // Add event listener to create button
     const createButton = document.getElementById('createPageBtn');
     if (createButton) {
@@ -1261,7 +1278,7 @@ function showCreatePageModal() {
             if (pageName) {
                 try {
                     await createPage(pageName);
-                    modal.hide();
+                    document.getElementById(modalId).remove();
                 } catch (error) {
                     showAlert(`Failed to create page: ${error.message}`, 'danger');
                 }
@@ -1269,25 +1286,18 @@ function showCreatePageModal() {
         });
     }
     
-    // Show modal
-    modal.show();
-    
-    // Focus on input if the element exists
-    if (modalElement) {
-        modalElement.addEventListener('shown.bs.modal', () => {
-            const pageNameInput = document.getElementById('newPageName');
-            if (pageNameInput) {
-                pageNameInput.focus();
-            }
-        });
-        
-        // Clean up on modal hide
-        modalElement.addEventListener('hidden.bs.modal', () => {
-            if (modalElement) {
-                modalElement.remove();
-            }
-        });
+    // Focus on input
+    const pageNameInput = document.getElementById('newPageName');
+    if (pageNameInput) {
+        setTimeout(() => pageNameInput.focus(), 100);
     }
+    
+    // Add click listener to backdrop for closing
+    modalElement.addEventListener('click', (e) => {
+        if (e.target === modalElement) {
+            modalElement.remove();
+        }
+    });
 }
 
 // Update the event listener for the Add Page button with null check
@@ -1544,6 +1554,7 @@ function setupDragAndResize() {
             
             // Add a class to indicate resizing
             activeSnippet.classList.add('resizing');
+            document.body.classList.add('snippet-dragging');
             console.log('Resize started for snippet:', activeSnippet.id);
             return;
         }
@@ -1551,8 +1562,8 @@ function setupDragAndResize() {
         // Check if we're clicking on a snippet for dragging
         const snippet = e.target.closest('.snippet-container');
         if (snippet && !isPreviewMode) {
-            // If clicked on the content or handle area (not a button)
-            if (!e.target.closest('button')) {
+            // If clicked on the content or handle area (not a button or interactive element)
+            if (!e.target.closest('button') && !e.target.closest('a') && !e.target.closest('input')) {
                 e.preventDefault();
                 activeSnippet = snippet;
                 action = 'drag';
@@ -1560,13 +1571,14 @@ function setupDragAndResize() {
                 
                 // Get the current position
                 const style = window.getComputedStyle(activeSnippet);
-                startLeft = parseInt(style.left, 10);
-                startTop = parseInt(style.top, 10);
+                startLeft = parseInt(style.left, 10) || 0; // Default to 0 if NaN
+                startTop = parseInt(style.top, 10) || 0;   // Default to 0 if NaN
                 startX = e.clientX;
                 startY = e.clientY;
                 
                 // Add a class for styling during drag
                 activeSnippet.classList.add('dragging');
+                document.body.classList.add('snippet-dragging');
                 console.log('Drag started for snippet:', activeSnippet.id);
             }
         }
@@ -1580,7 +1592,7 @@ function setupDragAndResize() {
             // Calculate new position
             const dx = e.clientX - startX;
             const dy = e.clientY - startY;
-            
+       
             const newLeft = startLeft + dx;
             const newTop = startTop + dy;
             
@@ -1598,7 +1610,13 @@ function setupDragAndResize() {
                         left: Math.max(0, newLeft), 
                         top: Math.max(0, newTop) 
                     };
-                    debouncedUpdatePosition(snippetId, position);
+                    
+                    // Store in memory cache
+                    const cachedSnippets = JSON.parse(localStorage.getItem('cachedSnippets') || '{}');
+                    cachedSnippets[snippetId] = cachedSnippets[snippetId] || {};
+                    cachedSnippets[snippetId].position = position;
+                    localStorage.setItem('cachedSnippets', JSON.stringify(cachedSnippets));
+                    
                     lastPositionUpdate = now;
                 }
             }
@@ -1624,7 +1642,13 @@ function setupDragAndResize() {
                         width: newWidth, 
                         height: newHeight 
                     };
-                    debouncedUpdateSize(snippetId, size);
+                    
+                    // Store in memory cache
+                    const cachedSnippets = JSON.parse(localStorage.getItem('cachedSnippets') || '{}');
+                    cachedSnippets[snippetId] = cachedSnippets[snippetId] || {};
+                    cachedSnippets[snippetId].size = size;
+                    localStorage.setItem('cachedSnippets', JSON.stringify(cachedSnippets));
+                    
                     lastSizeUpdate = now;
                 }
             }
@@ -1638,8 +1662,8 @@ function setupDragAndResize() {
             // Final update of position or size
             if (action === 'drag' && isDragging) {
                 const style = window.getComputedStyle(activeSnippet);
-                const left = parseInt(style.left, 10);
-                const top = parseInt(style.top, 10);
+                const left = parseInt(style.left, 10) || 0;
+                const top = parseInt(style.top, 10) || 0;
                 
                 // Get the snippetId from the data attribute
                 const snippetId = activeSnippet.getAttribute('data-snippet-id');
@@ -1669,44 +1693,91 @@ function setupDragAndResize() {
             // Clean up regardless of success or failure
             action = null;
             activeSnippet = null;
+            document.body.classList.remove('snippet-dragging');
             console.log('Drag/resize ended');
         }
     };
     
     // Touch event handlers for mobile support
     document.addEventListener('touchstart', (e) => {
-        // Similar logic to mousedown but for touch events
+        if (isPreviewMode) return;
+        
         const touch = e.touches[0];
         if (touch) {
-            // Simulate a mousedown event
-            const simulatedEvent = {
-                clientX: touch.clientX,
-                clientY: touch.clientY,
-                target: document.elementFromPoint(touch.clientX, touch.clientY),
-                preventDefault: () => e.preventDefault()
-            };
-            // Reuse the same logic
-            document.dispatchEvent(new MouseEvent('mousedown', simulatedEvent));
+            const touchTarget = document.elementFromPoint(touch.clientX, touch.clientY);
+            
+            // Check if we're touching a resize handle
+            const resizeHandle = touchTarget?.closest('.resize-handle');
+            if (resizeHandle && !isPreviewMode) {
+                e.preventDefault();
+                activeSnippet = resizeHandle.closest('.snippet-container');
+                action = 'resize';
+                isResizing = true;
+                
+                // Store starting dimensions
+                startWidth = activeSnippet.offsetWidth;
+                startHeight = activeSnippet.offsetHeight;
+                startX = touch.clientX;
+                startY = touch.clientY;
+                
+                activeSnippet.classList.add('resizing');
+                document.body.classList.add('snippet-dragging');
+                return;
+            }
+            
+            // Check if we're touching a snippet for dragging
+            const snippet = touchTarget?.closest('.snippet-container');
+            if (snippet && !isPreviewMode) {
+                if (!touchTarget.closest('button') && !touchTarget.closest('a') && !touchTarget.closest('input')) {
+                    e.preventDefault();
+                    activeSnippet = snippet;
+                    action = 'drag';
+                    isDragging = true;
+                    
+                    const style = window.getComputedStyle(activeSnippet);
+                    startLeft = parseInt(style.left, 10) || 0;
+                    startTop = parseInt(style.top, 10) || 0;
+                    startX = touch.clientX;
+                    startY = touch.clientY;
+                    
+                    activeSnippet.classList.add('dragging');
+                    document.body.classList.add('snippet-dragging');
+                }
+            }
         }
     }, { passive: false });
     
     document.addEventListener('touchmove', (e) => {
+        if (!activeSnippet) return;
+        
         const touch = e.touches[0];
-        if (touch && (isDragging || isResizing)) {
-            e.preventDefault(); // Prevent scrolling while dragging
-            const simulatedEvent = {
-                clientX: touch.clientX,
-                clientY: touch.clientY
-            };
-            onMouseMove(simulatedEvent);
+        if (touch) {
+            e.preventDefault(); // Prevent scrolling
+            
+            if (action === 'drag' && isDragging) {
+                const dx = touch.clientX - startX;
+                const dy = touch.clientY - startY;
+                
+                const newLeft = startLeft + dx;
+                const newTop = startTop + dy;
+                
+                activeSnippet.style.left = `${Math.max(0, newLeft)}px`;
+                activeSnippet.style.top = `${Math.max(0, newTop)}px`;
+            } else if (action === 'resize' && isResizing) {
+                const dx = touch.clientX - startX;
+                const dy = touch.clientY - startY;
+                
+                const newWidth = Math.max(100, startWidth + dx);
+                const newHeight = Math.max(50, startHeight + dy);
+                
+                activeSnippet.style.width = `${newWidth}px`;
+                activeSnippet.style.height = `${newHeight}px`;
+            }
         }
     }, { passive: false });
     
-    document.addEventListener('touchend', () => {
-        if (isDragging || isResizing) {
-            onMouseUp();
-        }
-    });
+    document.addEventListener('touchend', onMouseUp);
+    document.addEventListener('touchcancel', onMouseUp);
     
     // Add the global mouse event listeners
     document.addEventListener('mousemove', onMouseMove);
@@ -1716,135 +1787,6 @@ function setupDragAndResize() {
     document.addEventListener('mouseleave', onMouseUp);
     
     console.log('Drag and resize event listeners attached');
-}
-
-// Immediate save functions (used for final save on mouse up)
-async function savePositionImmediately(snippetId, position) {
-    try {
-        console.log(`Final position save for snippet ${snippetId}:`, position);
-        
-        // Check if we're in fallback mode
-        const isInFallbackMode = token === 'admin_fallback_token';
-        
-        if (isInFallbackMode) {
-            // Update in localStorage
-            const storedPages = JSON.parse(localStorage.getItem('fallbackPages') || '{}');
-            const page = storedPages[currentPage];
-            
-            if (!page || !Array.isArray(page.snippets)) {
-                throw new Error('Cannot find page or snippets in local storage');
-            }
-            
-            // Find and update snippet
-            const snippetIndex = page.snippets.findIndex(s => s.id === snippetId);
-            if (snippetIndex === -1) {
-                throw new Error(`Snippet ${snippetId} not found in local storage`);
-            }
-            
-            // Update position
-            page.snippets[snippetIndex].position = position;
-            
-            // Save back to localStorage
-            storedPages[currentPage] = page;
-            localStorage.setItem('fallbackPages', JSON.stringify(storedPages));
-            showAlert('Position saved', 'success', 1000);
-            return true;
-        } else {
-            // Update via API
-            const page = await getCurrentPage();
-            if (!page) throw new Error('Failed to get current page');
-            
-            // Find the snippet
-            const snippetIndex = page.snippets.findIndex(s => s.id === snippetId);
-            if (snippetIndex === -1) {
-                throw new Error(`Snippet ${snippetId} not found in current page`);
-            }
-            
-            // Create updated snippets array
-            const updatedSnippets = [...page.snippets];
-            updatedSnippets[snippetIndex] = {
-                ...updatedSnippets[snippetIndex],
-                position
-            };
-            
-            // Update the page
-            const result = await updatePage({
-                ...page,
-                snippets: updatedSnippets
-            });
-            
-            showAlert('Position saved', 'success', 1000);
-            return result;
-        }
-    } catch (error) {
-        console.error('Error saving position:', error);
-        showAlert('Failed to save position: ' + error.message, 'danger');
-        return false;
-    }
-}
-
-async function saveSizeImmediately(snippetId, size) {
-    try {
-        console.log(`Final size save for snippet ${snippetId}:`, size);
-        
-        // Check if we're in fallback mode
-        const isInFallbackMode = token === 'admin_fallback_token';
-        
-        if (isInFallbackMode) {
-            // Update in localStorage
-            const storedPages = JSON.parse(localStorage.getItem('fallbackPages') || '{}');
-            const page = storedPages[currentPage];
-            
-            if (!page || !Array.isArray(page.snippets)) {
-                throw new Error('Cannot find page or snippets in local storage');
-            }
-            
-            // Find and update snippet
-            const snippetIndex = page.snippets.findIndex(s => s.id === snippetId);
-            if (snippetIndex === -1) {
-                throw new Error(`Snippet ${snippetId} not found in local storage`);
-            }
-            
-            // Update size
-            page.snippets[snippetIndex].size = size;
-            
-            // Save back to localStorage
-            storedPages[currentPage] = page;
-            localStorage.setItem('fallbackPages', JSON.stringify(storedPages));
-            showAlert('Size saved', 'success', 1000);
-            return true;
-        } else {
-            // Update via API
-            const page = await getCurrentPage();
-            if (!page) throw new Error('Failed to get current page');
-            
-            // Find the snippet
-            const snippetIndex = page.snippets.findIndex(s => s.id === snippetId);
-            if (snippetIndex === -1) {
-                throw new Error(`Snippet ${snippetId} not found in current page`);
-            }
-            
-            // Create updated snippets array
-            const updatedSnippets = [...page.snippets];
-            updatedSnippets[snippetIndex] = {
-                ...updatedSnippets[snippetIndex],
-                size
-            };
-            
-            // Update the page
-            const result = await updatePage({
-                ...page,
-                snippets: updatedSnippets
-            });
-            
-            showAlert('Size saved', 'success', 1000);
-            return result;
-        }
-    } catch (error) {
-        console.error('Error saving size:', error);
-        showAlert('Failed to save size: ' + error.message, 'danger');
-        return false;
-    }
 }
 
 function showAlert(message, type) {
@@ -2443,86 +2385,104 @@ function createDraggableNavButton(navData = null) {
 // Function to show navigation button editor
 async function showNavButtonEditor(navId = null) {
     console.log('Opening nav button editor, navId:', navId);
-    const isNewButton = !navId;
-    navId = navId || Date.now().toString();
     
-    // Get current button data if editing
-    let currentButtonData = null;
-    if (!isNewButton) {
-        try {
-            const page = await getCurrentPage();
-            currentButtonData = page.navButtons?.find(nav => nav.id === navId);
-        } catch (error) {
-            console.error('Error fetching button data:', error);
-            showAlert('Failed to load button data', 'danger');
-            return;
+    try {
+        // Get available pages for the select dropdown
+        const pages = await makeRequest('/api/pages');
+        console.log('Available pages:', pages);
+        
+        // If editing existing button, get its current data
+        let currentButtonData = null;
+        const isNewButton = navId === null;
+        
+        if (!isNewButton) {
+            // Get the current page 
+            const currentPageData = await getCurrentPage();
+            
+            // Find the specified button in the current page's nav buttons
+            if (currentPageData && currentPageData.navButtons) {
+                currentButtonData = currentPageData.navButtons.find(btn => btn.id === navId);
+            }
         }
-    }
-    
-    const modal = document.createElement('div');
-    modal.className = 'modal fade show';
-    modal.style.display = 'block';
-    modal.style.backgroundColor = 'rgba(0,0,0,0.5)';
-    
-    // Get available pages
-    const pages = window.availablePages || [];
-    console.log('Available pages:', pages);
-    
-    modal.innerHTML = `
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">${isNewButton ? 'Add' : 'Edit'} Navigation Button</h5>
-                    <button type="button" class="btn-close" onclick="this.closest('.modal').remove()"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="mb-3">
-                        <label class="form-label">Target Page</label>
-                        <select class="form-select" id="pageSelect">
-                            ${pages.map(page => 
-                                `<option value="${page.id}" ${currentButtonData?.targetPage === page.id ? 'selected' : ''}>
-                                    ${page.name}
-                                </option>`
-                            ).join('')}
-                        </select>
+        
+        // Create modal
+        const modalId = 'navButtonModal';
+        let existingModal = document.getElementById(modalId);
+        if (existingModal) {
+            existingModal.remove();
+        }
+        
+        const modal = document.createElement('div');
+        modal.id = modalId;
+        modal.className = 'modal show';
+        modal.style = 'display: block; background-color: rgba(0,0,0,0.5);';
+        
+        modal.innerHTML = `
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">${isNewButton ? 'Add' : 'Edit'} Navigation Button</h5>
+                        <button type="button" class="btn-close" onclick="document.getElementById('${modalId}').remove()"></button>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label">Button Text</label>
-                        <input type="text" class="form-control" id="buttonText" 
-                               value="${currentButtonData?.text || 'Go to Home'}">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label">Target Page</label>
+                            <select class="form-select" id="pageSelect">
+                                ${pages.map(page => 
+                                    `<option value="${page.id}" ${currentButtonData?.targetPage === page.id ? 'selected' : ''}>
+                                        ${page.name}
+                                    </option>`
+                                ).join('')}
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Button Text</label>
+                            <input type="text" class="form-control" id="buttonText" 
+                                   value="${currentButtonData?.text || 'Go to Home'}">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Button Style</label>
+                            <select class="form-select" id="buttonStyle">
+                                <option value="modern" ${currentButtonData?.style === 'modern' ? 'selected' : ''}>
+                                    Modern (Gradient)
+                                </option>
+                                <option value="tech" ${currentButtonData?.style === 'tech' ? 'selected' : ''}>
+                                    Tech (Geometric)
+                                </option>
+                                <option value="minimal" ${currentButtonData?.style === 'minimal' ? 'selected' : ''}>
+                                    Minimal (Clean)
+                                </option>
+                            </select>
+                        </div>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label">Button Style</label>
-                        <select class="form-select" id="buttonStyle">
-                            <option value="modern" ${currentButtonData?.style === 'modern' ? 'selected' : ''}>
-                                Modern (Gradient)
-                            </option>
-                            <option value="tech" ${currentButtonData?.style === 'tech' ? 'selected' : ''}>
-                                Tech (Geometric)
-                            </option>
-                            <option value="minimal" ${currentButtonData?.style === 'minimal' ? 'selected' : ''}>
-                                Minimal (Clean)
-                            </option>
-                        </select>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" onclick="document.getElementById('${modalId}').remove()">Cancel</button>
+                        <button type="button" class="btn btn-primary" id="saveNavButton">Save</button>
                     </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-primary" onclick="createAndSaveNavButton('${navId}', ${isNewButton})">
-                        ${isNewButton ? 'Add Button' : 'Save Changes'}
-                    </button>
                 </div>
             </div>
-        </div>
-    `;
-    
-    document.body.appendChild(modal);
-
-    // Close modal when clicking outside
-    modal.addEventListener('click', (e) => {
-        if (e.target === modal) {
+        `;
+        
+        // Add modal to DOM
+        document.body.appendChild(modal);
+        
+        // Add backdrop click handler
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                modal.remove();
+            }
+        });
+        
+        // Add save button handler
+        document.getElementById('saveNavButton').addEventListener('click', async () => {
+            await createAndSaveNavButton(navId, isNewButton);
             modal.remove();
-        }
-    });
+        });
+        
+    } catch (error) {
+        console.error('Error showing nav button editor:', error);
+        showAlert('Failed to open navigation button editor', 'danger');
+    }
 }
 
 // Function to create and save navigation button
@@ -2953,35 +2913,41 @@ function createNavigationButton(text, targetPage) {
 function showAddButtonForm() {
     console.log('showAddButtonForm called');
     
-    // First, load available pages to populate the dropdown
     loadPages().then(pages => {
+        const modalId = 'addButtonModal';
+        let existingModal = document.getElementById(modalId);
+        if (existingModal) {
+            existingModal.remove();
+        }
+        
         const modal = document.createElement('div');
-        modal.className = 'modal show d-block';
-        modal.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+        modal.id = modalId;
+        modal.className = 'modal show';
+        modal.style = 'display: block; background-color: rgba(0,0,0,0.5);';
+        
         modal.innerHTML = `
             <div class="modal-dialog">
                 <div class="modal-content">
                     <div class="modal-header">
                         <h5 class="modal-title">Add Navigation Button</h5>
-                        <button type="button" class="btn-close" onclick="this.closest('.modal').remove()"></button>
+                        <button type="button" class="btn-close" onclick="document.getElementById('${modalId}').remove()"></button>
                     </div>
                     <div class="modal-body">
-                        <div class="form-group mb-3">
-                            <label for="buttonText">Button Text:</label>
-                            <input type="text" id="buttonText" class="form-control" value="Go to Page">
+                        <div class="mb-3">
+                            <label class="form-label">Button Text</label>
+                            <input type="text" class="form-control" id="buttonText" value="Go to Page">
                         </div>
-                        <div class="form-group mb-3">
-                            <label for="buttonStyleSelect">Button Style:</label>
-                            <select id="buttonStyleSelect" class="form-control">
-                                <option value="futuristic">Futuristic</option>
-                                <option value="futuristic pulse">Futuristic with Pulse</option>
-                                <option value="neon">Neon</option>
-                                <option value="neon pulse">Neon with Pulse</option>
+                        <div class="mb-3">
+                            <label class="form-label">Button Style</label>
+                            <select class="form-select" id="buttonStyleSelect">
+                                <option value="modern">Modern (Gradient)</option>
+                                <option value="tech">Tech (Geometric)</option>
+                                <option value="minimal">Minimal (Clean)</option>
                             </select>
                         </div>
-                        <div class="form-group mb-3">
-                            <label for="targetPage">Target Page:</label>
-                            <select id="targetPage" class="form-control">
+                        <div class="mb-3">
+                            <label class="form-label">Target Page</label>
+                            <select class="form-select" id="targetPage">
                                 ${pages.map(page => 
                                     `<option value="${page.id}">${page.name}</option>`
                                 ).join('')}
@@ -2989,7 +2955,7 @@ function showAddButtonForm() {
                         </div>
                     </div>
                     <div class="modal-footer">
-                        <button onclick="this.closest('.modal').remove()" class="btn btn-secondary">Cancel</button>
+                        <button type="button" class="btn btn-secondary" onclick="document.getElementById('${modalId}').remove()">Cancel</button>
                         <button id="saveButtonBtn" class="btn btn-primary">Save</button>
                     </div>
                 </div>
@@ -2997,6 +2963,13 @@ function showAddButtonForm() {
         `;
 
         document.body.appendChild(modal);
+        
+        // Add backdrop click handler
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                modal.remove();
+            }
+        });
         
         // Add click handler for the save button
         document.getElementById('saveButtonBtn').addEventListener('click', async function() {
@@ -3033,8 +3006,8 @@ function showAddButtonForm() {
             }
         });
     }).catch(error => {
-        console.error('Error loading pages for button form:', error);
-        showAlert('Failed to load pages', 'danger');
+        console.error('Error loading pages:', error);
+        showAlert('Failed to load pages for button form', 'danger');
     });
 }
 
