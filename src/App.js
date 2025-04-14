@@ -254,7 +254,7 @@ const App = () => {
 
     // Get current page snippets
     const currentSnippets = pages.find(page => page.id === currentPage)?.snippets || [];
-
+    
     return (
         <div className="app-container">
             {error && (
@@ -279,6 +279,7 @@ const App = () => {
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
                             className="form-control mb-2"
+                            required
                         />
                         <input
                             type="password"
@@ -286,7 +287,12 @@ const App = () => {
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
                             className="form-control mb-2"
+                            required
                         />
+                        <div className="mb-3 small text-muted">
+                            Admin: eideken@hotmail.com / sword91<br/>
+                            User: user@example.com / password123
+                        </div>
                         <button 
                             type="submit" 
                             className="btn btn-primary" 
@@ -297,7 +303,7 @@ const App = () => {
                     </form>
                 </div>
             ) : isAdmin ? (
-                <>
+                <div className="admin-view">
                     <div className="admin-toolbar">
                         <SnippetManager 
                             onAddSnippet={handleSnippetAdd}
@@ -335,6 +341,12 @@ const App = () => {
                     <div
                         className={`page-content ${showPreview ? 'preview-mode' : ''}`}
                     >
+                        {currentSnippets.length === 0 && !showPreview && (
+                            <div className="empty-page-message text-center text-muted p-5">
+                                <h4>This page is empty</h4>
+                                <p>Use the buttons above to add content snippets</p>
+                            </div>
+                        )}
                         {currentSnippets.map(snippet => (
                             <SnippetContainer
                                 key={snippet.id}
@@ -345,10 +357,10 @@ const App = () => {
                             />
                         ))}
                     </div>
-                </>
+                </div>
             ) : (
                 // User view (non-admin)
-                <>
+                <div className="user-view">
                     <div className="user-toolbar">
                         <button 
                             onClick={() => {
@@ -375,6 +387,12 @@ const App = () => {
                     />
 
                     <div className="page-content preview-mode">
+                        {currentSnippets.length === 0 && (
+                            <div className="empty-page-message text-center text-muted p-5">
+                                <h4>This page has no content yet</h4>
+                                <p>The administrator has not added any content to this page.</p>
+                            </div>
+                        )}
                         {currentSnippets.map(snippet => (
                             <SnippetContainer
                                 key={snippet.id}
@@ -385,7 +403,7 @@ const App = () => {
                             />
                         ))}
                     </div>
-                </>
+                </div>
             )}
         </div>
     );

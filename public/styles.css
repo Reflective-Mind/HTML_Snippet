@@ -165,17 +165,22 @@
     align-items: center;
 }
 
-/* Content area with sufficient margin to avoid toolbar overlap */
+/* Content area with sufficient margin to avoid toolbar overlap and proper dimensions */
 .content-area,
 .page-content {
-    margin-top: 140px; /* Increased margin - Toolbar (60px) + Page nav (60px) + margin (20px) */
+    margin-top: 140px; /* Toolbar (60px) + Page nav (60px) + margin (20px) */
+    margin-left: 20px;
+    margin-right: 20px;
     padding: 20px;
-    min-height: calc(100vh - 180px); /* Adjusted for header height */
+    min-height: 500px; /* Set a reasonable minimum height */
+    height: calc(100vh - 180px); /* Adjusted for header height */
+    max-width: calc(100vw - 40px); /* Prevent overflow to the right */
     position: relative;
     background: #fff;
     border: 1px solid #e9ecef;
     border-radius: 8px;
     overflow: visible; /* Allow snippets to be dragged outside */
+    box-sizing: border-box; /* Include padding in width/height calculations */
 }
 
 .page-button {
@@ -195,17 +200,16 @@
     position: absolute;
     bottom: 0;
     right: 0;
-    width: 30px;
-    height: 30px;
+    width: 20px;
+    height: 20px;
     cursor: se-resize;
     background: linear-gradient(135deg, transparent 50%, #007bff 50%);
     opacity: 0.7;
-    transition: opacity 0.2s;
-    pointer-events: auto;
     z-index: 101;
+    transition: opacity 0.2s;
 }
 
-.snippet:hover .resize-handle {
+.snippet-container:hover .resize-handle {
     opacity: 1;
 }
 
@@ -397,15 +401,56 @@
 .snippet-container {
     position: absolute;
     z-index: 10;
+    box-sizing: border-box;
 }
 
 /* Preview mode styles */
 .preview-mode .page-content {
-    background-color: #f5f5f5; /* Light gray background to differentiate preview mode */
+    background-color: #fff; /* Clean white background for preview */
+    border: none; /* Remove border in preview mode */
 }
 
-/* Responsive adjustments */
+/* User view specific styling for the page content area */
+.user-view .page-content {
+    border: none;
+    background-color: #fff;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+}
+
+/* Make content area appear differently in admin vs user mode */
+.admin-view .page-content:not(.preview-mode) {
+    background-image: linear-gradient(to right, rgba(200, 200, 200, 0.1) 1px, transparent 1px),
+                     linear-gradient(to bottom, rgba(200, 200, 200, 0.1) 1px, transparent 1px);
+    background-size: 20px 20px; /* Match the grid size */
+    border: 2px dashed #ccc;
+    background-color: #f9f9f9;
+}
+
+/* Add a visual indicator for the content boundaries */
+.admin-view .page-content:not(.preview-mode)::before {
+    content: "Content Area";
+    position: absolute;
+    top: -25px;
+    left: 10px;
+    background: #f8f9fa;
+    padding: 2px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    color: #6c757d;
+    border: 1px solid #dee2e6;
+}
+
+/* Ensure proper mobile styling */
 @media (max-width: 768px) {
+    .content-area,
+    .page-content {
+        margin-top: 160px; /* Adjusted for potential wrap */
+        margin-left: 10px;
+        margin-right: 10px;
+        padding: 15px;
+        max-width: calc(100vw - 20px);
+    }
+    
     .snippet-manager {
         max-width: 100%;
     }
@@ -421,9 +466,62 @@
         height: auto;
         flex-wrap: wrap;
     }
-    
-    .content-area,
-    .page-content {
-        margin-top: 160px; /* Adjusted for potential wrap */
-    }
+}
+
+/* Navigation styles specific to user/admin views */
+.user-page-manager .page-navigation {
+    background-color: #f8f9fa;
+    padding: 10px;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.admin-page-manager .page-navigation {
+    background-color: #e9ecef;
+    padding: 10px;
+    border-bottom: 1px solid #dee2e6;
+}
+
+/* Empty page styling */
+.empty-page-message {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    padding: 20px;
+    border-radius: 8px;
+    background-color: rgba(255, 255, 255, 0.8);
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+}
+
+/* Improved snippet control visibility */
+.snippet-container .snippet-controls {
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.snippet-container:hover .snippet-controls {
+    opacity: 1;
+}
+
+/* Make sure snippet info (coordinates/size) doesn't affect layout */
+.snippet-info {
+    position: absolute;
+    bottom: -20px;
+    left: 0;
+    font-size: 10px;
+    color: #999;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 5;
+}
+
+/* Login form improvements */
+.login-form {
+    max-width: 400px;
+    margin: 100px auto;
+    padding: 30px;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
 } 

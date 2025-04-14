@@ -8,11 +8,11 @@ const PageManager = ({
     onPageRemove, 
     onPageUpdate,
     onError,
-    isUserView = false  // New prop to identify user view mode
+    isUserView = false  // Flag to identify user view mode
 }) => {
     const [showSettings, setShowSettings] = useState(false);
     const [editingPage, setEditingPage] = useState(null);
-    const [defaultPage, setDefaultPage] = useState('home');
+    const [defaultPage, setDefaultPage] = useState(localStorage.getItem('defaultPage') || 'home');
 
     const handlePageAdd = () => {
         if (isUserView || !onPageAdd) return;
@@ -62,8 +62,8 @@ const PageManager = ({
     };
 
     return (
-        <div className="page-manager">
-            <div className="page-navigation bg-light p-2">
+        <div className={`page-manager ${isUserView ? 'user-page-manager' : 'admin-page-manager'}`}>
+            <div className="page-navigation">
                 <div className="d-flex justify-content-between align-items-center">
                     <div className="page-buttons">
                         {pages.map(page => (
@@ -78,6 +78,7 @@ const PageManager = ({
                                     <button
                                         className="btn btn-link text-secondary"
                                         onClick={() => handlePageEdit(page)}
+                                        title="Edit page settings"
                                     >
                                         ⚙️
                                     </button>
@@ -86,6 +87,7 @@ const PageManager = ({
                                     <button
                                         onClick={() => onPageRemove(page.id)}
                                         className="btn btn-danger btn-sm ms-1"
+                                        title="Delete page"
                                     >
                                         ×
                                     </button>
@@ -98,12 +100,14 @@ const PageManager = ({
                             <button 
                                 onClick={handlePageAdd}
                                 className="btn btn-success btn-sm"
+                                title="Add a new page"
                             >
                                 + New Page
                             </button>
                             <button
                                 onClick={() => setShowSettings(true)}
                                 className="btn btn-secondary btn-sm ms-2"
+                                title="Global page settings"
                             >
                                 Page Settings
                             </button>
