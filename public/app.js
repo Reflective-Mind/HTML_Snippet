@@ -8,8 +8,12 @@ let isResizing = false;
 let updateTimeout = null;
 let navButtons = [];
 
-// API base URL - this is critical for API calls to work correctly
-const API_BASE_URL = 'https://mbti-render.onrender.com';
+// Use relative URL for API by default, falling back to the environment value if defined
+const API_BASE_URL = window.location.origin || 'https://mbti-render.onrender.com';
+console.log('Using API base URL:', API_BASE_URL);
+
+// Flag to track if the app is in initialization state
+let isInitializing = true;
 
 // DOM Elements - these will be initialized when the DOM is loaded
 let loginForm;
@@ -405,6 +409,19 @@ async function login(email, password) {
     try {
         console.log('Login function called with email:', email);
         
+        // Show loading indicator
+        const loginButton = document.querySelector('#login-form button[type="submit"]');
+        if (loginButton) {
+            loginButton.disabled = true;
+            loginButton.innerHTML = 'Logging in...';
+        }
+        
+        // Add loading overlay
+        const overlay = document.createElement('div');
+        overlay.className = 'loading-overlay';
+        overlay.innerHTML = '<div class="spinner"></div>';
+        document.body.appendChild(overlay);
+        
         // Check if input is valid
         if (!email || !password) {
             showAlert('Email and password are required', 'danger');
@@ -449,20 +466,36 @@ async function login(email, password) {
                 const content = document.getElementById('content');
                 if (content) content.innerHTML = '';
                 
+                // Remove loading overlay
+                document.body.removeChild(overlay);
+                
+                // Reset login button
+                if (loginButton) {
+                    loginButton.disabled = false;
+                    loginButton.innerHTML = 'Login';
+                }
+                
                 // Load pages
-                setTimeout(() => {
-                    loadPages().then(pages => {
-                        console.log(`Loaded ${pages?.length || 0} pages for admin user`);
-                        navigateToPage('home');
-                    }).catch(err => {
-                        console.error('Error loading pages:', err);
-                    });
-                }, 500);
+                loadPages().then(pages => {
+                    console.log(`Loaded ${pages?.length || 0} pages for admin user`);
+                    navigateToPage('home');
+                }).catch(err => {
+                    console.error('Error loading pages:', err);
+                });
                 
                 return true;
             } else {
                 console.error('Admin panel element not found - cannot display admin interface');
                 showAlert('UI Error: Admin panel not found. Please refresh the page.', 'danger');
+                
+                // Remove loading overlay
+                document.body.removeChild(overlay);
+                
+                // Reset login button
+                if (loginButton) {
+                    loginButton.disabled = false;
+                    loginButton.innerHTML = 'Login';
+                }
                 
                 // Try to show the login form again as fallback
                 showLoginForm();
@@ -488,23 +521,33 @@ async function login(email, password) {
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ email, password })
+            body: JSON.stringify({ email, password }),
+            // Add timeout to prevent indefinite loading
+            signal: AbortSignal.timeout(15000) // 15 second timeout
         });
 
         console.log('Login response status:', response.status);
-        console.log('Login response headers:', [...response.headers.entries()]);
+        
+        // Remove loading overlay
+        document.body.removeChild(overlay);
+        
+        // Reset login button
+        if (loginButton) {
+            loginButton.disabled = false;
+            loginButton.innerHTML = 'Login';
+        }
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
+            throw new Error(errorData.message || `Server error: ${response.status}`);
+        }
         
         const data = await response.json();
         console.log('Login response received:', { 
             success: !!data.token, 
             role: data.role,
-            message: data.message || 'No message',
-            responseData: data
+            message: data.message || 'No message'
         });
-        
-        if (!response.ok) {
-            throw new Error(data.message || 'Invalid credentials');
-        }
         
         // Store all user data
         token = data.token;
@@ -533,22 +576,33 @@ async function login(email, password) {
         console.log('publicView:', !!document.getElementById('public-view'));
 
         // Update view based on user role
-        setTimeout(() => {
-            console.log('In setTimeout callback - about to update UI based on role:', userRole);
-            if (userRole === 'admin') {
-                console.log('User is admin, calling showAdminPanel()');
-                showAdminPanel();
-            } else {
-                console.log('User is not admin, calling showPublicView()');
-                showPublicView();
-                loadPublicPage(currentPage);
-            }
-            console.log('UI update completed');
-        }, 1000); // Short delay to let the alert show
+        if (userRole === 'admin') {
+            console.log('User is admin, calling showAdminPanel()');
+            showAdminPanel();
+        } else {
+            console.log('User is not admin, calling showPublicView()');
+            showPublicView();
+            loadPublicPage(currentPage);
+        }
+        console.log('UI update completed');
 
         return true;
     } catch (error) {
         console.error('Login error:', error);
+        
+        // Remove loading overlay if it exists
+        const overlay = document.querySelector('.loading-overlay');
+        if (overlay) {
+            document.body.removeChild(overlay);
+        }
+        
+        // Reset login button
+        const loginButton = document.querySelector('#login-form button[type="submit"]');
+        if (loginButton) {
+            loginButton.disabled = false;
+            loginButton.innerHTML = 'Login';
+        }
+        
         showAlert(error.message || 'Login failed. Please try again.', 'danger');
         return false;
     }
@@ -730,6 +784,20 @@ async function makeRequest(url, options = {}) {
         const fullUrl = url.startsWith('http') ? url : window.API_BASE_URL + url;
         console.log('Making API request to:', fullUrl);
         
+        // Show loading indicator for long requests
+        let loadingOverlay = null;
+        const showLoading = options.showLoading !== false;
+        
+        if (showLoading) {
+            // Create loading overlay only for requests that might take time
+            if (['POST', 'PUT', 'DELETE'].includes(options.method) || url.includes('/api/pages')) {
+                loadingOverlay = document.createElement('div');
+                loadingOverlay.className = 'loading-overlay';
+                loadingOverlay.innerHTML = '<div class="spinner"></div>';
+                document.body.appendChild(loadingOverlay);
+            }
+        }
+        
         // Set default headers
         if (!options.headers) {
             options.headers = {
@@ -754,6 +822,11 @@ async function makeRequest(url, options = {}) {
             // Clear timeout
             clearTimeout(timeoutId);
             
+            // Remove loading overlay if it exists
+            if (loadingOverlay) {
+                document.body.removeChild(loadingOverlay);
+            }
+            
             // Handle common HTTP errors
             if (response.status === 401) {
                 // Save the current token for comparison
@@ -762,19 +835,16 @@ async function makeRequest(url, options = {}) {
                 if (currentToken) {
                     // Only handle session expiry for non-critical pages
                     if (!url.includes('/api/login')) {
-                        showAlert('Your session may have expired. Attempting to refresh...', 'warning', 5000);
+                        // Clear auth state immediately to prevent further 401 errors
+                        localStorage.removeItem('token');
+                        localStorage.removeItem('userRole');
                         
-                        // Try to silently refresh the auth - for now we'll just maintain the session
-                        // We don't remove the token here to prevent multiple logouts
+                        showAlert('Your session has expired. Please log in again.', 'warning');
+                        
+                        // Update view to show login form
                         setTimeout(() => {
-                            // Check if we're still logged in after a delay (someone might have logged in again)
-                            if (localStorage.getItem('token') === currentToken) {
-                                // If still using the same token, we need to redirect to login
-                                console.warn('Session expired and could not be refreshed');
-                                showAlert('Session expired. Please log in again.', 'warning', 5000);
-                                updateView();
-                            }
-                        }, 1000);
+                            updateView();
+                        }, 500);
                     }
                     
                     throw new Error('Session expired');
@@ -799,11 +869,26 @@ async function makeRequest(url, options = {}) {
                         }
                     }
                 }
-                throw new Error('Page not found');
+                throw new Error('Resource not found');
             }
             
             if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                // Try to get error details from response
+                const errorText = await response.text();
+                let errorMessage = `Server error: ${response.status}`;
+                
+                try {
+                    // Try to parse error as JSON
+                    const errorJson = JSON.parse(errorText);
+                    errorMessage = errorJson.message || errorMessage;
+                } catch (e) {
+                    // If not JSON, use the error text if not empty
+                    if (errorText && errorText.trim()) {
+                        errorMessage = errorText;
+                    }
+                }
+                
+                throw new Error(errorMessage);
             }
             
             // Parse JSON response if expected
@@ -819,6 +904,11 @@ async function makeRequest(url, options = {}) {
             
         } catch (fetchError) {
             clearTimeout(timeoutId);
+            
+            // Remove loading overlay if it exists
+            if (loadingOverlay) {
+                document.body.removeChild(loadingOverlay);
+            }
             
             if (fetchError.name === 'AbortError') {
                 throw new Error('Request timed out. Please try again.');
@@ -841,6 +931,15 @@ async function makeRequest(url, options = {}) {
                     return { id: 'home', name: 'Home', snippets: [] };
                 }
             }
+        }
+        
+        // Handle network errors specially
+        if (error.message === 'Failed to fetch' || error.message.includes('Network Error')) {
+            showAlert('Network error. Please check your connection and try again.', 'danger');
+            
+            // Enable fallback mode
+            isOffline = true;
+            setupFallbackMode();
         }
         
         throw error;
@@ -1091,44 +1190,78 @@ async function loadPages() {
         // Check if we're in fallback mode (using the fallback admin token)
         const isInFallbackMode = token === 'admin_fallback_token';
         
+        // Add loading indicator
+        const pagesNav = document.getElementById('pages-nav');
+        if (pagesNav) {
+            pagesNav.innerHTML = '<div class="spinner-border spinner-border-sm text-primary mx-auto" role="status"><span class="visually-hidden">Loading...</span></div>';
+        }
+        
         let pages;
-        if (isInFallbackMode) {
-            // In fallback mode, get pages from localStorage
-            console.log('Using fallback mode for loading pages');
-            const storedPages = JSON.parse(localStorage.getItem('fallbackPages') || '{}');
-            
-            // Convert from object to array
-            pages = Object.values(storedPages);
-            
-            // If no pages exist in localStorage, create home page
-            if (pages.length === 0) {
-                const homePage = {
-                    id: 'home',
-                    name: 'Home',
-                    snippets: [],
-                    navButtons: [],
-                    isDefault: true
-                };
+        let retryCount = 0;
+        const maxRetries = 2;
+        
+        // Retry logic for loading pages
+        while (retryCount <= maxRetries) {
+            try {
+                if (isInFallbackMode) {
+                    // In fallback mode, get pages from localStorage
+                    console.log('Using fallback mode for loading pages');
+                    const storedPages = JSON.parse(localStorage.getItem('fallbackPages') || '{}');
+                    
+                    // Convert from object to array
+                    pages = Object.values(storedPages);
+                    
+                    // If no pages exist in localStorage, create home page
+                    if (pages.length === 0) {
+                        const homePage = {
+                            id: 'home',
+                            name: 'Home',
+                            snippets: [],
+                            navButtons: [],
+                            isDefault: true
+                        };
+                        
+                        // Add meshcreator page as well
+                        const meshcreatorPage = {
+                            id: 'meshcreator',
+                            name: 'MeshCreator',
+                            snippets: [],
+                            navButtons: [],
+                            isDefault: false
+                        };
+                        
+                        // Store in localStorage
+                        storedPages['home'] = homePage;
+                        storedPages['meshcreator'] = meshcreatorPage;
+                        localStorage.setItem('fallbackPages', JSON.stringify(storedPages));
+                        
+                        pages = [homePage, meshcreatorPage];
+                    }
+                    
+                    // Break out of retry loop on success
+                    break;
+                } else {
+                    // Normal mode - use API with timeout
+                    pages = await makeRequest('/api/pages', {
+                        // No loading overlay for this request since we have the spinner in the nav
+                        showLoading: false,
+                    });
+                    
+                    // Break out of retry loop on success
+                    break;
+                }
+            } catch (error) {
+                console.warn(`Error loading pages (attempt ${retryCount + 1}/${maxRetries + 1}):`, error);
                 
-                // Add meshcreator page as well
-                const meshcreatorPage = {
-                    id: 'meshcreator',
-                    name: 'MeshCreator',
-                    snippets: [],
-                    navButtons: [],
-                    isDefault: false
-                };
+                // If this is the last retry, throw the error
+                if (retryCount === maxRetries) {
+                    throw error;
+                }
                 
-                // Store in localStorage
-                storedPages['home'] = homePage;
-                storedPages['meshcreator'] = meshcreatorPage;
-                localStorage.setItem('fallbackPages', JSON.stringify(storedPages));
-                
-                pages = [homePage, meshcreatorPage];
+                // Increment retry count and wait before retrying
+                retryCount++;
+                await new Promise(resolve => setTimeout(resolve, 1000));
             }
-        } else {
-            // Normal mode - use API
-            pages = await makeRequest('/api/pages');
         }
         
         if (!pages || !Array.isArray(pages)) {
@@ -1168,15 +1301,46 @@ async function loadPages() {
             }
         }
         
-        window.availablePages = pages; // Store pages for navigation buttons
+        // Store pages for navigation buttons
+        window.availablePages = pages; 
         renderPages(pages);
+        
+        // If we're on admin view, try to navigate to the current page
+        if (userRole === 'admin') {
+            const currentPageId = localStorage.getItem('currentPage') || 'home';
+            if (currentPageId && pages.some(p => p.id === currentPageId)) {
+                // Only navigate if not already on the current page
+                if (currentPage !== currentPageId) {
+                    navigateToPage(currentPageId);
+                }
+            }
+        }
+        
         return pages;
     } catch (error) {
         console.error('Load pages error:', error);
+        
+        // Clear any loading indicators
+        const pagesNav = document.getElementById('pages-nav');
+        if (pagesNav) {
+            pagesNav.innerHTML = '<div class="alert alert-warning mb-0 py-1">Failed to load pages</div>';
+        }
+        
         showAlert(`Failed to load pages: ${error.message}`, 'danger');
         
         if (error.message.includes('Session expired')) {
+            // Handle session expiry
+            localStorage.removeItem('token');
+            localStorage.removeItem('userRole');
+            updateView();
             return [];
+        }
+        
+        // Try to enable fallback mode automatically
+        if (!isOffline && (error.message.includes('Network') || error.message.includes('Failed to fetch'))) {
+            console.log('Network error detected, enabling fallback mode');
+            isOffline = true;
+            setupFallbackMode();
         }
         
         // Use a fallback page structure if we can't load pages

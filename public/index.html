@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="utf-8" />
-    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAACXBIWXMAAAsSAAALEgHS3X78AAABb0lEQVQ4y6WTsUsCYRjGH7OL5KKIiKCha6hBB2mQwcXF0R0cXERDU0X/QVtLNDg0RBB0YxFBFzgJNRSIFS05iBwdpZRQB9UXvnfcXaLk0AcP733v8/u+777vVSKRCLPSb8WsyWmapjTjTGmJzGR3dxO/0+0+hMLhA2Ua5/PNzQ5n6J7o9frPfD5/YlnWqLLkfL95cnk83vPTq6vzP5eV4BC8WCw+YvJBrVZLud3uXZ7ndrP/ClitVlO1Wu1JkqQbh8Ox0+12M6IozrTbbeMvwO12e6zX67cymUzSbrefcRy3DUAN6IJzFEWRHMcxhUJB6fV6Wa/Xu2O321cbjcZLo9F4hfFAr9dvGwwG02Kx+A74N8Xj8YOgz+dLwKpUKpVIOBw+JEnyGN9fzWbzGTsZaDQaCYa7AHwBGBkMBhOCJJPJE0VRCrVa7QmNi8A88FEqlXIM86jX663lcrkrgN8BeAv4gMPhYPgOq1ar9EIwLhiMNxz4BbUgJ9qG6XjXAAAAAElFTkSuQmCC" type="image/png" />
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAACXBIWXMAAAsSAAALEgHS3X78AAABb0lEQVQ4y6WTsUsCYRjGH7OL5KKIiKCha6hBB2mQwcXF0R0cXERDU0X/QVtLNDg0RBB0YxFBFzgJNRSIFS05iBwdpZRQB9UXvnfcXaLk0AcP733v8/u+777vVSKRCLPSb8WsyWmapjTjTGmJzGR3dxO/0+0+hMLhA2Ua5/PNzQ5n6J7o9frPfD5/YlnWqLLkfL95cnk83vPTq6vzP5eV4BC8WCw+YvJBrVZLud3uXZ7ndrP/ClitVlO1Wu1JkqQbh8Ox0+12M6IozrTbbeMvwO12e6zX67cymUzSbrefcRy3DVAN6IJzFEWRHMcxhUJB6fV6Wa/Xu2O321cbjcZLo9F4hfFAr9dvGwwG02Kx+A74N8Xj8YOgz+dLwKpUKpVIOBw+JEnyGN9fzWbzGTsZaDQaCYa7AHwBGBkMBhOCJJPJE0VRCrVa7QmNi8A88FEqlXIM86jX663lcrkrgN8BeAv4gMPhYPgOq1ar9EIwLhiMNxz4BbUgJ9qG6XjXAAAAAElFTkSuQmCC" type="image/png" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#000000" />
     <meta
@@ -22,8 +22,9 @@
             return true;
         });
         
-        // Global API URL for all fetch calls
-        window.API_BASE_URL = 'https://mbti-render.onrender.com';
+        // Global API URL for all fetch calls - use relative URL by default
+        window.API_BASE_URL = window.location.origin;
+        console.log('API base URL set to:', window.API_BASE_URL);
         
         // Global initialization for navigation functions
         window.isPreviewMode = false;
@@ -80,64 +81,60 @@
     <div id="login-form-container" class="container mt-5">
         <div class="row">
             <div class="col-md-6 offset-md-3">
-                <div class="card shadow">
-                    <div class="card-header bg-primary text-white">
-                        <h2 class="text-center h4 mb-0">Account Access</h2>
-                    </div>
-                    <div class="card-body">
-                        <!-- Login Form Tab -->
-                        <div id="loginForm">
-                            <form id="login-form">
-                                <div class="mb-3">
-                                    <label for="email" class="form-label">Email</label>
-                                    <input type="email" class="form-control" id="email" required>
-                                </div>
-                                <div class="mb-3">
-                                    <label for="password" class="form-label">Password</label>
-                                    <input type="password" class="form-control" id="password" required>
-                                </div>
-                                <div class="mb-3 text-muted small">
-                                    <strong>Admin:</strong> eideken@hotmail.com / sword91<br>
-                                    <strong>User:</strong> user@example.com / password123
-                                </div>
-                                <div class="d-grid gap-2">
-                                    <button type="submit" class="btn btn-primary">Login</button>
-                                </div>
-                            </form>
+                <div class="login-form">
+                    <h2 class="text-center">HTML Snippet Builder</h2>
+                    
+                    <!-- Error display area -->
+                    <div id="login-error" class="alert alert-danger" style="display: none;"></div>
+                    
+                    <!-- Login Form Tab -->
+                    <div id="loginForm">
+                        <form id="login-form">
+                            <div class="form-group">
+                                <label for="email" class="form-label">Email</label>
+                                <input type="email" class="form-control" id="email" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="password" class="form-label">Password</label>
+                                <input type="password" class="form-control" id="password" required>
+                            </div>
+                            <div class="form-text mb-3">
+                                <strong>Admin:</strong> eideken@hotmail.com / sword91<br>
+                                <strong>User:</strong> user@example.com / password123
+                            </div>
+                            <button type="submit" class="btn btn-primary">Login</button>
                             <hr>
                             <p class="text-center mb-0">
                                 <a href="#" onclick="toggleRegister(); return false;">Need an account? Register</a>
                             </p>
-                        </div>
-                        
-                        <!-- Register Form Tab (Hidden initially) -->
-                        <div id="registerForm" style="display: none;">
-                            <form id="register-form">
-                                <div class="mb-3">
-                                    <label for="regEmail" class="form-label">Email</label>
-                                    <input type="email" class="form-control" id="regEmail" required>
-                                </div>
-                                <div class="mb-3">
-                                    <label for="regUsername" class="form-label">Username</label>
-                                    <input type="text" class="form-control" id="regUsername" required>
-                                </div>
-                                <div class="mb-3">
-                                    <label for="regPassword" class="form-label">Password</label>
-                                    <input type="password" class="form-control" id="regPassword" required>
-                                </div>
-                                <div class="mb-3">
-                                    <label for="confirmPassword" class="form-label">Confirm Password</label>
-                                    <input type="password" class="form-control" id="confirmPassword" required>
-                                </div>
-                                <div class="d-grid gap-2">
-                                    <button type="submit" class="btn btn-success">Register</button>
-                                </div>
-                            </form>
+                        </form>
+                    </div>
+                    
+                    <!-- Register Form Tab (Hidden initially) -->
+                    <div id="registerForm" style="display: none;">
+                        <form id="register-form">
+                            <div class="form-group">
+                                <label for="regEmail" class="form-label">Email</label>
+                                <input type="email" class="form-control" id="regEmail" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="regUsername" class="form-label">Username</label>
+                                <input type="text" class="form-control" id="regUsername" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="regPassword" class="form-label">Password</label>
+                                <input type="password" class="form-control" id="regPassword" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="confirmPassword" class="form-label">Confirm Password</label>
+                                <input type="password" class="form-control" id="confirmPassword" required>
+                            </div>
+                            <button type="submit" class="btn btn-success">Register</button>
                             <hr>
                             <p class="text-center mb-0">
                                 <a href="#" onclick="toggleRegister(); return false;">Already have an account? Login</a>
                             </p>
-                        </div>
+                        </form>
                     </div>
                 </div>
             </div>

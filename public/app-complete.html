@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="utf-8" />
-    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAACXBIWXMAAAsSAAALEgHS3X78AAABb0lEQVQ4y6WTsUsCYRjGH7OL5KKIiKCha6hBB2mQwcXF0R0cXERDU0X/QVtLNDg0RBB0YxFBFzgJNRSIFS05iBwdpZRQB9UXvnfcXaLk0AcP733v8/u+777vVSKRCLPSb8WsyWmapjTjTGmJzGR3dxO/0+0+hMLhA2Ua5/PNzQ5n6J7o9frPfD5/YlnWqLLkfL95cnk83vPTq6vzP5eV4BC8WCw+YvJBrVZLud3uXZ7ndrP/ClitVlO1Wu1JkqQbh8Ox0+12M6IozrTbbeMvwO12e6zX67cymUzSbrefcRy3DUAN6IJzFEWRHMcxhUJB6fV6Wa/Xu2O321cbjcZLo9F4hfFAr9dvGwwG02Kx+A74N8Xj8YOgz+dLwKpUKpVIOBw+JEnyGN9fzWbzGTsZaDQaCYa7AHwBGBkMBhOCJJPJE0VRCrVa7QmNi8A88FEqlXIM86jX663lcrkrgN8BeAv4gMPhYPgOq1ar9EIwLhiMNxz4BbUgJ9qG6XjXAAAAAElFTkSuQmCC" />
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAACXBIWXMAAAsSAAALEgHS3X78AAABb0lEQVQ4y6WTsUsCYRjGH7OL5KKIiKCha6hBB2mQwcXF0R0cXERDU0X/QVtLNDg0RBB0YxFBFzgJNRSIFS05iBwdpZRQB9UXvnfcXaLk0AcP733v8/u+777vVSKRCLPSb8WsyWmapjTjTGmJzGR3dxO/0+0+hMLhA2Ua5/PNzQ5n6J7o9frPfD5/YlnWqLLkfL95cnk83vPTq6vzP5eV4BC8WCw+YvJBrVZLud3uXZ7ndrP/ClitVlO1Wu1JkqQbh8Ox0+12M6IozrTbbeMvwO12e6zX67cymUzSbrefcRy3DVAN6IJzFEWRHMcxhUJB6fV6Wa/Xu2O321cbjcZLo9F4hfFAr9dvGwwG02Kx+A74N8Xj8YOgz+dLwKpUKpVIOBw+JEnyGN9fzWbzGTsZaDQaCYa7AHwBGBkMBhOCJJPJE0VRCrVa7QmNi8A88FEqlXIM86jX663lcrkrgN8BeAv4gMPhYPgOq1ar9EIwLhiMNxz4BbUgJ9qG6XjXAAAAAElFTkSuQmCC" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#000000" />
     <meta name="description" content="HTML Snippet Builder - Create and manage HTML content" />
@@ -12,8 +12,9 @@
     <link href="/styles.css" rel="stylesheet">
     <title>HTML Snippet Builder</title>
     <script>
-        // Define global API base URL for all fetch calls
-        window.API_BASE_URL = 'https://mbti-render.onrender.com';
+        // Define global API base URL for all fetch calls - use relative URL
+        window.API_BASE_URL = window.location.origin;
+        console.log('API base URL set to:', window.API_BASE_URL);
         
         // Global initialization for navigation functions
         window.isPreviewMode = false;
