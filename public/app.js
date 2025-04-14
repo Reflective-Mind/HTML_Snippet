@@ -579,6 +579,9 @@ async function loadPageContent(pageId) {
         
         // Render the snippets and navigation buttons
         renderSnippets(page.snippets || [], page.navButtons || []);
+        
+        // Initialize file download handler for new snippets
+        setTimeout(initializeFileDownloadHandler, 1000);
 
         // Update page navigation buttons
         const pageButtons = document.querySelectorAll('.page-button');
@@ -860,6 +863,11 @@ function renderSnippets(snippets = [], navButtons = []) {
     // First clear existing content
     container.innerHTML = '';
     
+    // Get container dimensions for relative positioning
+    const containerWidth = container.offsetWidth;
+    const containerHeight = container.offsetHeight;
+    console.log('Container dimensions:', containerWidth, 'x', containerHeight);
+    
     // Add snippets to the container
     snippets.forEach(snippet => {
         const snippetDiv = document.createElement('div');
@@ -870,11 +878,35 @@ function renderSnippets(snippets = [], navButtons = []) {
         let xPos = snippet.position?.x || 0;
         let yPos = snippet.position?.y || 0;
         
-        // Ensure snippets aren't too far to the right
-        if (xPos > 1500) xPos = 50;
+        // Ensure snippets aren't too far to the right or off screen
+        if (xPos > containerWidth - 100) xPos = 50;
+        if (yPos > containerHeight - 100) yPos = 50;
         
-        snippetDiv.style.left = `${xPos}px`;
-        snippetDiv.style.top = `${yPos}px`;
+        // Convert absolute positions to percentage-based positions for better responsiveness
+        // Only if the container has dimensions (avoid division by zero)
+        if (containerWidth > 0 && containerHeight > 0) {
+            // Store original pixel positions as data attributes for editing
+            snippetDiv.dataset.originalX = xPos;
+            snippetDiv.dataset.originalY = yPos;
+            
+            // Calculate percentage positions
+            const xPercent = (xPos / containerWidth) * 100;
+            const yPercent = (yPos / containerHeight) * 100;
+            
+            // Apply percentage positioning in preview mode, pixel positioning in edit mode
+            if (isPreviewMode) {
+                snippetDiv.style.left = `${xPercent}%`;
+                snippetDiv.style.top = `${yPercent}%`;
+            } else {
+                snippetDiv.style.left = `${xPos}px`;
+                snippetDiv.style.top = `${yPos}px`;
+            }
+        } else {
+            // Fallback to pixel positioning if container dimensions aren't available
+            snippetDiv.style.left = `${xPos}px`;
+            snippetDiv.style.top = `${yPos}px`;
+        }
+        
         snippetDiv.style.width = `${snippet.size?.width || 400}px`;
         snippetDiv.style.height = `${snippet.size?.height || 300}px`;
         
@@ -888,7 +920,8 @@ function renderSnippets(snippets = [], navButtons = []) {
         iframe.style.height = '100%';
         iframe.style.border = 'none';
         iframe.srcdoc = snippet.html;
-        iframe.sandbox = 'allow-scripts allow-same-origin allow-modals';
+        // Update sandbox attributes to allow downloads and file operations
+        iframe.sandbox = 'allow-scripts allow-same-origin allow-modals allow-downloads allow-forms allow-popups';
         
         content.appendChild(iframe);
         snippetDiv.appendChild(content);
@@ -1084,6 +1117,17 @@ async function saveSizeImmediately(snippetId, size) {
 // Updated setupDragAndResize function
 function setupDragAndResize() {
     const snippets = document.querySelectorAll('.snippet');
+    const container = document.getElementById('content');
+    
+    if (!container) {
+        console.error('Content container not found for drag and resize setup');
+        return;
+    }
+    
+    // Get container dimensions for relative positioning
+    const containerWidth = container.offsetWidth;
+    const containerHeight = container.offsetHeight;
+    
     snippets.forEach(snippet => {
         let isDragging = false;
         let isResizing = false;
@@ -1098,14 +1142,26 @@ function setupDragAndResize() {
                 const dx = e.clientX - startX;
                 const dy = e.clientY - startY;
                 
+                // Calculate new position in pixels
                 const newX = Math.max(0, initialX + dx);
                 const newY = Math.max(0, initialY + dy);
                 
-                snippet.style.left = `${newX}px`;
-                snippet.style.top = `${newY}px`;
+                // Keep position within container bounds
+                const maxX = containerWidth - snippet.offsetWidth;
+                const maxY = containerHeight - snippet.offsetHeight;
+                const boundedX = Math.min(maxX, Math.max(0, newX));
+                const boundedY = Math.min(maxY, Math.max(0, newY));
+                
+                // Apply the position
+                snippet.style.left = `${boundedX}px`;
+                snippet.style.top = `${boundedY}px`;
+                
+                // Store original pixel values for later conversion to percentages
+                snippet.dataset.originalX = boundedX;
+                snippet.dataset.originalY = boundedY;
                 
                 // Update current position
-                currentPosition = { x: newX, y: newY };
+                currentPosition = { x: boundedX, y: boundedY };
                 
                 // Debounce the position update
                 debouncedUpdatePosition(snippetId, currentPosition);
@@ -1114,12 +1170,20 @@ function setupDragAndResize() {
                 const width = startWidth + (e.clientX - startX);
                 const height = startHeight + (e.clientY - startY);
                 
+                // Set minimum sizes
                 if (width > 200 && height > 100) {
-                    snippet.style.width = `${width}px`;
-                    snippet.style.height = `${height}px`;
+                    // Keep size within reasonable bounds
+                    const maxWidth = containerWidth - parseFloat(snippet.style.left);
+                    const maxHeight = containerHeight - parseFloat(snippet.style.top);
+                    
+                    const boundedWidth = Math.min(maxWidth, width);
+                    const boundedHeight = Math.min(maxHeight, height);
+                    
+                    snippet.style.width = `${boundedWidth}px`;
+                    snippet.style.height = `${boundedHeight}px`;
                     
                     // Update current size
-                    currentSize = { width, height };
+                    currentSize = { width: boundedWidth, height: boundedHeight };
                     
                     // Debounce the size update
                     debouncedUpdateSize(snippetId, currentSize);
@@ -1131,6 +1195,10 @@ function setupDragAndResize() {
             if (isDragging) {
                 // Force an immediate position save on mouse up
                 await savePositionImmediately(snippetId, currentPosition);
+                
+                // When in admin mode: update data attributes for future use
+                snippet.dataset.originalX = currentPosition.x;
+                snippet.dataset.originalY = currentPosition.y;
             } else if (isResizing) {
                 // Force an immediate size save on mouse up
                 await saveSizeImmediately(snippetId, currentSize);
@@ -1150,7 +1218,6 @@ function setupDragAndResize() {
             console.log('MouseDown event on snippet:', snippetId);
             console.log('Target element:', e.target);
             console.log('Element classes:', e.target.className);
-            console.log('Is resize-handle?', e.target.classList.contains('resize-handle'));
             
             if (e.target.classList.contains('resize-handle') || e.target.closest('.resize-handle')) {
                 isResizing = true;
@@ -2405,4 +2472,140 @@ function togglePreviewMode() {
         isPreviewMode = false;
         localStorage.setItem('isPreviewMode', 'false');
     }
-} 
+}
+
+// Function to handle file downloads from snippets
+function initializeFileDownloadHandler() {
+    console.log('Initializing file download handler');
+    
+    // Listen for messages from iframes
+    window.addEventListener('message', function(event) {
+        try {
+            // Check if the message is a download request
+            if (event.data && event.data.type === 'download') {
+                console.log('Received download request:', event.data);
+                
+                const { fileContent, fileName, fileType } = event.data;
+                
+                if (!fileContent || !fileName) {
+                    console.error('Invalid download request, missing required fields');
+                    return;
+                }
+                
+                // Create a blob with the file content
+                let blob;
+                
+                if (fileContent instanceof Blob) {
+                    blob = fileContent;
+                } else if (typeof fileContent === 'string') {
+                    // Determine the MIME type based on file extension
+                    let mimeType = 'text/plain';
+                    if (fileName.endsWith('.obj')) mimeType = 'model/obj';
+                    else if (fileName.endsWith('.mtl')) mimeType = 'model/mtl';
+                    else if (fileType) mimeType = fileType;
+                    
+                    blob = new Blob([fileContent], { type: mimeType });
+                } else {
+                    console.error('Unsupported file content type');
+                    return;
+                }
+                
+                // Create a download link
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = fileName;
+                
+                // Append to body, click and remove
+                document.body.appendChild(a);
+                a.click();
+                
+                // Clean up
+                setTimeout(() => {
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                }, 100);
+                
+                console.log(`File "${fileName}" downloaded successfully`);
+            }
+        } catch (error) {
+            console.error('Error handling download message:', error);
+        }
+    });
+    
+    // Inject helper script into all iframes to enable file downloading
+    function injectHelperScript() {
+        const snippets = document.querySelectorAll('.snippet-content iframe');
+        
+        snippets.forEach(iframe => {
+            try {
+                // Only inject if we can access the iframe content (same origin)
+                if (iframe.contentDocument) {
+                    const script = iframe.contentDocument.createElement('script');
+                    script.textContent = `
+                        // Helper function to enable downloading files from within iframes
+                        window.downloadFile = function(content, fileName, type) {
+                            // Send message to parent window
+                            window.parent.postMessage({
+                                type: 'download',
+                                fileContent: content,
+                                fileName: fileName,
+                                fileType: type
+                            }, '*');
+                            return true; // Signal success to caller
+                        };
+                        
+                        // Notify parent that helper is loaded
+                        window.parent.postMessage({
+                            type: 'helper_loaded',
+                            frameId: '${iframe.id}'
+                        }, '*');
+                        
+                        // Override saveAs if it exists (compatibility with FileSaver.js)
+                        if (typeof saveAs !== 'undefined') {
+                            const originalSaveAs = saveAs;
+                            window.saveAs = function(blob, fileName) {
+                                return window.downloadFile(blob, fileName);
+                            };
+                        }
+                        
+                        console.log('Download helper injected and ready');
+                    `;
+                    
+                    iframe.contentDocument.head.appendChild(script);
+                    console.log('Injected helper script into iframe:', iframe.id);
+                }
+            } catch (e) {
+                console.warn('Could not inject helper script into iframe:', iframe.id, e);
+            }
+        });
+    }
+    
+    // Call immediately and also set up a mutation observer to handle dynamically added iframes
+    injectHelperScript();
+    
+    // Set up observer for dynamically added snippets
+    const observer = new MutationObserver(mutations => {
+        mutations.forEach(mutation => {
+            if (mutation.addedNodes.length) {
+                // Check if we need to inject helper scripts
+                const hasNewIframes = Array.from(mutation.addedNodes).some(node => 
+                    node.querySelector && node.querySelector('.snippet-content iframe')
+                );
+                
+                if (hasNewIframes) {
+                    setTimeout(injectHelperScript, 500); // Delay to ensure iframe is loaded
+                }
+            }
+        });
+    });
+    
+    // Start observing the document
+    observer.observe(document.body, { childList: true, subtree: true });
+}
+
+// Initialize file download handler when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    initializeFileDownloadHandler();
+});
+  

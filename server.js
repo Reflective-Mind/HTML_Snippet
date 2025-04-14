@@ -10,6 +10,7 @@ const { Server } = require('socket.io');
 const http = require('http');
 const path = require('path');
 const fs = require('fs');
+const helmet = require('helmet');
 
 dotenv.config();
 
@@ -88,6 +89,25 @@ app.use('/api/login', limiter); // Apply stricter limits only to login
 app.use('/api/', apiLimiter); // Apply regular limits to other API routes
 app.use(express.static('public'));
 app.use(express.static('.'));  // Also serve files from root directory
+
+// Set up security middleware
+app.use(helmet({
+    contentSecurityPolicy: {
+        directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://cdn.jsdelivr.net"],
+            styleSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"],
+            imgSrc: ["'self'", "data:", "https:", "blob:"],
+            connectSrc: ["'self'", "https://api.mistral.ai"],
+            fontSrc: ["'self'", "https://cdn.jsdelivr.net"],
+            objectSrc: ["'self'", "blob:"],
+            mediaSrc: ["'self'", "blob:"],
+            frameSrc: ["'self'"],
+            sandbox: ['allow-forms', 'allow-scripts', 'allow-same-origin', 'allow-downloads']
+        }
+    },
+    crossOriginEmbedderPolicy: false // Allow loading resources in iframes
+}));
 
 // Setup mongoose for serverless environments
 mongoose.set('bufferCommands', false); // Disable mongoose buffering
@@ -2277,6 +2297,45 @@ app.get('/api/health', (req, res) => {
     uptime: process.uptime(),
     timestamp: new Date().toISOString()
   });
+});
+
+// Create a route for OBJ and MTL file downloads
+app.get('/api/download/obj', (req, res) => {
+    res.setHeader('Content-Type', 'model/obj');
+    res.setHeader('Content-Disposition', 'attachment; filename="model.obj"');
+    res.send(req.query.content || '');
+});
+
+app.get('/api/download/mtl', (req, res) => {
+    res.setHeader('Content-Type', 'model/mtl');
+    res.setHeader('Content-Disposition', 'attachment; filename="materials.mtl"');
+    res.send(req.query.content || '');
+});
+
+// Proxy endpoint for downloading files from external URLs
+app.get('/api/download/proxy', async (req, res) => {
+    const url = req.query.url;
+    if (!url) {
+        return res.status(400).send('URL parameter is required');
+    }
+
+    try {
+        const response = await axios.get(url, { responseType: 'arraybuffer' });
+        
+        // Set appropriate headers
+        const contentType = response.headers['content-type'] || 'application/octet-stream';
+        res.setHeader('Content-Type', contentType);
+        
+        // Get filename from URL or use default
+        const urlParts = url.split('/');
+        const filename = urlParts[urlParts.length - 1] || 'download';
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        
+        res.send(response.data);
+    } catch (error) {
+        console.error('Download proxy error:', error.message);
+        res.status(500).send(`Failed to download: ${error.message}`);
+    }
 });
 
 // Export the Express app for serverless environments (like Vercel)

@@ -8,6 +8,14 @@
     overflow: hidden;
 }
 
+/* Responsive container for snippets in preview mode */
+#public-content {
+    position: relative;
+    min-height: calc(100vh - 120px);
+    width: 100%;
+    height: 100%;
+}
+
 .snippet {
     position: absolute;
     border: 1px solid #ccc;
@@ -64,16 +72,49 @@
     gap: 5px;
 }
 
+/* Preview mode adjustments */
 .preview-mode .snippet {
     border: none;
     box-shadow: none;
     cursor: default;
     resize: none;
+    /* Ensure the snippet positions and sizes are applied properly in % mode */
+    transition: left 0.2s ease, top 0.2s ease;
 }
 
 .preview-mode .snippet-controls,
 .preview-mode .resize-handle {
     display: none;
+}
+
+/* Ensure snippet positioning is responsive */
+@media (max-width: 768px) {
+    .snippet {
+        /* Limit size on small screens to prevent overflow */
+        max-width: 95% !important;
+    }
+}
+
+/* Make sure snippet content fits viewport in preview mode */
+.preview-mode .snippet-content {
+    overflow: auto;
+}
+
+/* Add support for download buttons */
+.download-button {
+    display: inline-block;
+    padding: 5px 10px;
+    background-color: #007bff;
+    color: white;
+    border-radius: 4px;
+    cursor: pointer;
+    text-decoration: none;
+    font-size: 14px;
+    margin: 5px 0;
+}
+
+.download-button:hover {
+    background-color: #0069d9;
 }
 
 #admin-toolbar {

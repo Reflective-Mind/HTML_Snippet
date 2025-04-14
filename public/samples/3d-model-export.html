@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Model Export Sample</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            overflow: hidden;
+        }
+        .canvas-container {
+            flex-grow: 1;
+            position: relative;
+            overflow: hidden;
+        }
+        .controls {
+            padding: 10px;
+            background-color: #f5f5f5;
+            border-top: 1px solid #ddd;
+        }
+        button {
+            padding: 5px 10px;
+            margin-right: 5px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0069d9;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        .info {
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+    </style>
+    <!-- Include Three.js and OBJ/MTL exporters -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.137.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.137.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.137.0/examples/js/exporters/OBJExporter.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.137.0/examples/js/exporters/MTLExporter.js"></script>
+    
+    <!-- Include our file export helper -->
+    <script src="/file-export-helper.js"></script>
+</head>
+<body>
+    <div class="canvas-container">
+        <canvas id="modelCanvas"></canvas>
+    </div>
+    <div class="controls">
+        <div class="info">Drag to rotate | Scroll to zoom | Right-click drag to pan</div>
+        <button id="exportOBJ">Export OBJ</button>
+        <button id="exportMTL">Export MTL</button>
+        <button id="reset">Reset View</button>
+    </div>
+
+    <script>
+        // Create a basic Three.js scene with a cube
+        let scene, camera, renderer, controls, cube;
+        
+        // Initialize the scene
+        function init() {
+            // Create scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xf0f0f0);
+            
+            // Create camera
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.z = 5;
+            
+            // Create renderer
+            const canvas = document.getElementById('modelCanvas');
+            renderer = new THREE.WebGLRenderer({ 
+                canvas: canvas,
+                antialias: true 
+            });
+            renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+            
+            // Add orbit controls
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.25;
+            
+            // Add a cube with materials
+            const geometry = new THREE.BoxGeometry(2, 2, 2);
+            
+            // Create different materials for each face
+            const materials = [
+                new THREE.MeshBasicMaterial({ color: 0xff0000 }), // red
+                new THREE.MeshBasicMaterial({ color: 0x00ff00 }), // green
+                new THREE.MeshBasicMaterial({ color: 0x0000ff }), // blue
+                new THREE.MeshBasicMaterial({ color: 0xffff00 }), // yellow
+                new THREE.MeshBasicMaterial({ color: 0xff00ff }), // magenta
+                new THREE.MeshBasicMaterial({ color: 0x00ffff })  // cyan
+            ];
+            
+            // Create cube with materials
+            cube = new THREE.Mesh(geometry, materials);
+            scene.add(cube);
+            
+            // Add ambient light
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+            scene.add(ambientLight);
+            
+            // Add directional light
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+            directionalLight.position.set(1, 1, 1);
+            scene.add(directionalLight);
+            
+            // Add event listeners
+            window.addEventListener('resize', onWindowResize);
+            document.getElementById('exportOBJ').addEventListener('click', exportOBJ);
+            document.getElementById('exportMTL').addEventListener('click', exportMTL);
+            document.getElementById('reset').addEventListener('click', resetView);
+            
+            // Initial resize
+            onWindowResize();
+            
+            // Start animation loop
+            animate();
+        }
+        
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // Rotate the cube slowly
+            if (cube) {
+                cube.rotation.x += 0.005;
+                cube.rotation.y += 0.01;
+            }
+            
+            // Update controls
+            if (controls) controls.update();
+            
+            // Render the scene
+            renderer.render(scene, camera);
+        }
+        
+        // Handle window resize
+        function onWindowResize() {
+            const canvas = renderer.domElement;
+            const width = canvas.clientWidth;
+            const height = canvas.clientHeight;
+            
+            if (camera) {
+                camera.aspect = width / height;
+                camera.updateProjectionMatrix();
+            }
+            
+            if (renderer) {
+                renderer.setSize(width, height, false);
+            }
+        }
+        
+        // Export OBJ function
+        function exportOBJ() {
+            try {
+                const exporter = new THREE.OBJExporter();
+                const result = exporter.parse(scene);
+                
+                // Use our file export helper
+                if (window.exportOBJ) {
+                    window.exportOBJ(result, 'cube.obj');
+                    console.log('OBJ export successful');
+                } else {
+                    console.error('exportOBJ function not available');
+                    alert('Export failed: Helper not available');
+                }
+            } catch (error) {
+                console.error('OBJ Export error:', error);
+                alert('Export failed: ' + error.message);
+            }
+        }
+        
+        // Export MTL function
+        function exportMTL() {
+            try {
+                // In this example, we're creating a simple MTL file manually
+                // In a real application, you would use THREE.MTLExporter
+                const mtlContent = `# MTL file for cube
+newmtl red
+Kd 1.0 0.0 0.0
+
+newmtl green
+Kd 0.0 1.0 0.0
+
+newmtl blue
+Kd 0.0 0.0 1.0
+
+newmtl yellow
+Kd 1.0 1.0 0.0
+
+newmtl magenta
+Kd 1.0 0.0 1.0
+
+newmtl cyan
+Kd 0.0 1.0 1.0
+`;
+                
+                // Use our file export helper
+                if (window.exportMTL) {
+                    window.exportMTL(mtlContent, 'cube.mtl');
+                    console.log('MTL export successful');
+                } else {
+                    console.error('exportMTL function not available');
+                    alert('Export failed: Helper not available');
+                }
+            } catch (error) {
+                console.error('MTL Export error:', error);
+                alert('Export failed: ' + error.message);
+            }
+        }
+        
+        // Reset view
+        function resetView() {
+            if (controls) {
+                controls.reset();
+            }
+            
+            if (cube) {
+                cube.rotation.set(0, 0, 0);
+            }
+        }
+        
+        // Initialize the scene when the page loads
+        window.addEventListener('load', init);
+    </script>
+</body>
+</html> 
