@@ -325,10 +325,6 @@ setInterval(async () => {
     }
 }, 5000);
 
-// Models
-const Page = require('./models/Page');
-const User = require('./models/User');
-
 // Settings model for configuration management
 const Settings = mongoose.model('Settings', {
     key: {
