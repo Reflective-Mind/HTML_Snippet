@@ -42,26 +42,16 @@ const SnippetContainer = ({
                 // Initialize window functions if needed
                 if (showPreview) {
                     window.isPreviewMode = true;
-                    
-                    if (!window.getAvailablePages) {
-                        window.getAvailablePages = function() {
-                            // This will be populated properly in App.js
-                            return [];
-                        };
-                    }
-                    
-                    if (!window.navigateToPage) {
-                        window.navigateToPage = function(pageId) {
-                            console.log('Navigate to page:', pageId);
-                            // The actual implementation is in App.js
-                        };
-                    }
                 }
                 
+                // Clone the content div to work with it
+                const contentClone = contentRef.current.cloneNode(true);
+                
                 // Execute scripts from HTML content
-                const scripts = contentRef.current.getElementsByTagName('script');
-                for (let i = 0; i < scripts.length; i++) {
-                    const script = scripts[i];
+                const scripts = contentClone.getElementsByTagName('script');
+                
+                // Create and append new script elements
+                Array.from(scripts).forEach(script => {
                     const newScript = document.createElement('script');
                     
                     // Copy all attributes
@@ -69,20 +59,29 @@ const SnippetContainer = ({
                         newScript.setAttribute(attr.name, attr.value);
                     });
                     
-                    // Copy script content
+                    // Copy content
                     newScript.innerHTML = script.innerHTML;
                     
-                    // Replace the original script with the new one
-                    script.parentNode.replaceChild(newScript, script);
-                }
+                    // Mark as executed
+                    newScript.setAttribute('data-executed', 'true');
+                    
+                    // Replace original script
+                    if (script.parentNode) {
+                        script.parentNode.replaceChild(newScript, script);
+                    } else {
+                        // If somehow the script doesn't have a parent, append to document body
+                        document.body.appendChild(newScript);
+                    }
+                });
                 
                 setContentRendered(true);
+                console.log(`Scripts executed for snippet ${snippet.id}`);
             } catch (err) {
                 console.error('Error initializing snippet content:', err);
                 if (onError) onError('Failed to initialize snippet content');
             }
         }
-    }, [snippet.html, showPreview, contentRendered, onError]);
+    }, [snippet.id, snippet.html, showPreview, contentRendered, onError]);
 
     // Update local state when snippet prop changes
     useEffect(() => {

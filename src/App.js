@@ -339,30 +339,45 @@ const App = () => {
         };
     }, [pages]);
 
-    // Set window variables for navigation from snippets
+    // Set window variables for navigation from snippets with proper scope
     useEffect(() => {
-        // Make these functions available to snippets
-        window.getAvailablePages = () => {
+        // Make these functions available to snippets with immediate values
+        window.isPreviewMode = showPreview || isUser;
+        
+        // Create a closure with the current pages and current page
+        window.getAvailablePages = function() {
+            console.log('getAvailablePages called, returning:', pages.map(p => ({ id: p.id, name: p.name })));
             return pages.map(p => ({ id: p.id, name: p.name }));
         };
         
-        window.navigateToPage = (pageId) => {
+        window.navigateToPage = function(pageId) {
+            console.log('navigateToPage called with:', pageId);
             if (pageId && pages.some(p => p.id === pageId)) {
                 localStorage.setItem('currentPage', pageId);
+                
+                // For admin mode, use React state
                 setCurrentPage(pageId);
+                
+                // Dispatch event for iframe content
+                window.dispatchEvent(new CustomEvent('navigationRequested', { 
+                    detail: { pageId: pageId }
+                }));
+                
+                if (isUser) {
+                    // For user view, force page reload if needed
+                    // This helps with embedded content
+                    window.location.hash = pageId;
+                }
             }
         };
         
-        // Set preview mode status
-        window.isPreviewMode = showPreview || isUser;
+        console.log('Window navigation functions initialized. Preview mode:', window.isPreviewMode);
         
         return () => {
-            // Clean up window variables when component unmounts
-            delete window.getAvailablePages;
-            delete window.navigateToPage;
-            delete window.isPreviewMode;
+            // Do not clean up window variables to avoid issues with iframe references
+            console.log('App component unmounting, preserving window functions');
         };
-    }, [pages, showPreview, isUser]);
+    }, [pages, showPreview, isUser, currentPage]);
 
     return (
         <div className="app-container">
@@ -471,16 +486,32 @@ const App = () => {
                     {/* Add window functions for snippets to use in preview mode */}
                     {showPreview && (
                         <script dangerouslySetInnerHTML={{ __html: `
-                            window.isPreviewMode = true;
-                            window.getAvailablePages = function() {
-                                return ${JSON.stringify(pages.map(p => ({ id: p.id, name: p.name })))};
-                            };
-                            window.navigateToPage = function(pageId) {
-                                if (pageId) {
-                                    window.localStorage.setItem('currentPage', pageId);
-                                    window.dispatchEvent(new CustomEvent('navigationRequested', { detail: { pageId: pageId } }));
-                                }
-                            };
+                            (function() {
+                                // Set global variables
+                                window.isPreviewMode = true;
+                                
+                                // Provide access to pages
+                                window.getAvailablePages = function() {
+                                    console.log('Admin preview: getAvailablePages called');
+                                    return ${JSON.stringify(pages.map(p => ({ id: p.id, name: p.name })))};
+                                };
+                                
+                                // Set up navigation
+                                window.navigateToPage = function(pageId) {
+                                    console.log('Admin preview: navigateToPage called with ' + pageId);
+                                    if (!pageId) return;
+                                    
+                                    // Store the page ID
+                                    localStorage.setItem('currentPage', pageId);
+                                    
+                                    // Dispatch a custom event for React to catch
+                                    window.dispatchEvent(new CustomEvent('navigationRequested', { 
+                                        detail: { pageId: pageId }
+                                    }));
+                                };
+                                
+                                console.log('Admin preview script initialized');
+                            })();
                         `}}></script>
                     )}
                 </div>
@@ -530,18 +561,48 @@ const App = () => {
                         ))}
                     </div>
                     
-                    {/* Add window functions for snippets to use */}
+                    {/* User view specific script with immediate functions */}
                     <script dangerouslySetInnerHTML={{ __html: `
-                        window.isPreviewMode = true;
-                        window.getAvailablePages = function() {
-                            return ${JSON.stringify(pages.map(p => ({ id: p.id, name: p.name })))};
-                        };
-                        window.navigateToPage = function(pageId) {
-                            if (pageId) {
-                                window.localStorage.setItem('currentPage', pageId);
-                                window.location.reload();
-                            }
-                        };
+                        (function() {
+                            // Set global variables
+                            window.isPreviewMode = true;
+                            
+                            // Direct access to pages data
+                            const pagesData = ${JSON.stringify(pages)};
+                            
+                            // Provide access to pages
+                            window.getAvailablePages = function() {
+                                console.log('User view: getAvailablePages called');
+                                return ${JSON.stringify(pages.map(p => ({ id: p.id, name: p.name })))};
+                            };
+                            
+                            // Set up navigation
+                            window.navigateToPage = function(pageId) {
+                                console.log('User view: navigateToPage called with ' + pageId);
+                                if (!pageId) return;
+                                
+                                // Store the page ID and reload
+                                localStorage.setItem('currentPage', pageId);
+                                
+                                // Try to dispatch an event first
+                                try {
+                                    window.dispatchEvent(new CustomEvent('navigationRequested', { 
+                                        detail: { pageId: pageId }
+                                    }));
+                                    console.log('Navigation event dispatched');
+                                } catch(e) {
+                                    console.error('Error dispatching event:', e);
+                                }
+                                
+                                // Force reload to the new page after a short delay
+                                setTimeout(function() {
+                                    window.location.href = window.location.pathname + '?page=' + pageId;
+                                }, 100);
+                            };
+                            
+                            console.log('User view script initialized. Available pages:', 
+                                window.getAvailablePages().map(p => p.name).join(', '));
+                        })();
                     `}}></script>
                 </div>
             )}

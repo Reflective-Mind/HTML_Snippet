@@ -620,4 +620,42 @@
     margin: 0;
     padding: 0;
     display: block;
+}
+
+/* Fix z-index issues */
+.snippet-container {
+    z-index: 50 !important;
+}
+
+/* Make snippet content visible */
+.snippet-content {
+    min-height: 20px !important;
+    min-width: 20px !important;
+    background-color: white;
+}
+
+/* Ensure proper absolute positioning of snippets */
+#admin-content-container,
+#user-content-container {
+    position: relative !important;
+    overflow: visible !important;
+    min-height: 500px !important;
+}
+
+/* Make navigation buttons work */
+button.btn {
+    cursor: pointer !important;
+    user-select: none !important;
+}
+
+/* Force visibility for all content in user view */
+.user-view * {
+    visibility: visible !important;
+}
+
+/* Force snippet display */
+.snippet-container {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
 } 

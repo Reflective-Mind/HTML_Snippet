@@ -182,25 +182,24 @@ const SnippetManager = ({ onAddSnippet, onError }) => {
     const handleTemplateSelect = (template) => {
         try {
             console.log(`Selecting template: ${template}`);
-            setSelectedTemplate(template);
             
-            // For better UX, directly add the template without showing modal
-            if (template && SNIPPET_TEMPLATES[template]) {
-                const templateData = SNIPPET_TEMPLATES[template];
-                console.log(`Adding template directly: ${template} (${templateData.name})`);
-                
-                onAddSnippet({
-                    html: templateData.html,
-                    size: templateData.defaultSize
-                });
-            } else {
-                // If template is not found, show modal
-                setShowTemplateModal(true);
-                console.log(`Template selected for modal: ${template}`);
+            // Get the template data
+            const templateData = SNIPPET_TEMPLATES[template];
+            if (!templateData) {
+                throw new Error(`Template not found: ${template}`);
             }
+            
+            console.log(`Adding template: ${template} (${templateData.name})`);
+            
+            // Add the snippet directly without showing modal
+            onAddSnippet({
+                html: templateData.html,
+                size: templateData.defaultSize
+            });
+            
         } catch (err) {
-            console.error('Error selecting template:', err);
-            onError(`Failed to select template: ${err.message}`);
+            console.error('Error adding template:', err);
+            onError(`Failed to add template: ${err.message}`);
         }
     };
 
