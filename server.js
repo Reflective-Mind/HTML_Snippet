@@ -12,6 +12,10 @@ const path = require('path');
 const fs = require('fs');
 const helmet = require('helmet');
 
+// Models imports
+const User = require('./models/User');
+const Page = require('./models/Page');
+
 dotenv.config();
 
 const app = express();
@@ -248,51 +252,39 @@ async function connectToMongoDB() {
             w: 'majority',
             maxPoolSize: 10, // Reduced for serverless
             socketTimeoutMS: 30000, // Reduced for serverless
-            family: 4  // Force IPv4
         });
-        
-        console.log('✅ Successfully connected to MongoDB');
-        console.log('📊 Connected to database:', mongoose.connection.db.databaseName);
+
+        console.log('✅ Connected to MongoDB successfully');
         mongoConnected = true;
         
-        try {
-            // Initialize channels first
-            console.log('Initializing settings and default channels...');
-            await initializeChannels();
-            
-            // Verify collections exist
-            const collections = await mongoose.connection.db.listCollections().toArray();
-            const collectionNames = collections.map(c => c.name);
-            console.log('📚 Available collections:', collectionNames);
+        // Create default users after successful connection
+        await ensureDefaultUserExists();
+        
+        // Initialize settings and default channels
+        console.log('Initializing settings and default channels...');
+        await initializeSettings();
+        await initializeChannels();
+        
+        // Verify collections exist
+        const collections = await mongoose.connection.db.listCollections().toArray();
+        const collectionNames = collections.map(c => c.name);
+        console.log('📚 Available collections:', collectionNames);
 
-            // Initialize settings if they don't exist
-            console.log('⚙️ Checking settings...');
-            await initializeSettings();
-            console.log('✅ Settings verified');
-
-            // Print database status
-            const users = await User.countDocuments();
-            const pages = await Page.countDocuments();
-            const settings = await Settings.countDocuments();
-            
-            console.log('📊 Database Status:');
-            console.log(`- Users: ${users}`);
-            console.log(`- Pages: ${pages}`);
-            console.log(`- Settings: ${settings}`);
-            
-            console.log('\n✨ Server ready to use!');
-        } catch (error) {
-            console.error('❌ Error in initialization:', error);
-            if (process.env.NODE_ENV !== 'vercel') {
-                process.exit(1);
-            }
-        }
-    } catch (err) {
-        console.error('❌ MongoDB connection error:', err);
+        // Print database status
+        const users = await User.countDocuments();
+        const pages = await Page.countDocuments();
+        const settings = await Settings.countDocuments();
+        
+        console.log('📊 Database Status:');
+        console.log(`- Users: ${users}`);
+        console.log(`- Pages: ${pages}`);
+        console.log(`- Settings: ${settings}`);
+        
+        console.log('\n✨ Server ready to use!');
+    } catch (error) {
+        console.error('❌ MongoDB connection error:', error);
+        console.error('Stack:', error.stack);
         mongoConnected = false;
-        if (process.env.NODE_ENV !== 'vercel') {
-            process.exit(1);
-        }
     }
 }
 
@@ -334,108 +326,8 @@ setInterval(async () => {
 }, 5000);
 
 // Models
-const Page = mongoose.model('Page', {
-    id: { 
-        type: String, 
-        required: true,
-        unique: true
-    },
-    name: { 
-        type: String, 
-        required: true
-    },
-    isDefault: {
-        type: Boolean,
-        default: false
-    },
-    snippets: [{
-        id: Number,
-        html: String,
-        position: {
-            x: Number,
-            y: Number
-        },
-        size: {
-            width: Number,
-            height: Number
-        },
-        apiConfig: {
-            type: String,
-            key: String
-        }
-    }],
-    navButtons: [{
-        id: String,
-        targetPage: String,
-        text: String,
-        style: String,
-        position: {
-            x: Number,
-            y: Number
-        }
-    }],
-    created: { 
-        type: Date, 
-        default: Date.now 
-    },
-    updated: { 
-        type: Date, 
-        default: Date.now 
-    }
-});
-
-// Add User model after Page model
-const User = mongoose.model('User', {
-    email: {
-        type: String,
-        required: true,
-        unique: true
-    },
-    username: {
-        type: String,
-        required: true,
-        unique: true,
-        trim: true,
-        minlength: 3,
-        maxlength: 20
-    },
-    password: {
-        type: String,
-        required: true
-    },
-    role: {
-        type: String,
-        enum: ['admin', 'user'],
-        default: 'user'
-    },
-    isBanned: {
-        type: Boolean,
-        default: false
-    },
-    created: {
-        type: Date,
-        default: Date.now
-    },
-    lastLogin: Date,
-    preferences: {
-        type: Map,
-        of: String
-    },
-    chatHistory: [{
-        timestamp: Date,
-        message: String,
-        response: String
-    }],
-    testResults: [{
-        testType: String,
-        date: Date,
-        results: Object
-    }],
-    tokenVersion: {
-        type: Number,
-        default: 0
-    }
-});
+const Page = require('./models/Page');
+const User = require('./models/User');
 
 // Settings model for configuration management
 const Settings = mongoose.model('Settings', {
@@ -702,16 +594,17 @@ app.get('/api/monitoring/alerts', authenticateAdmin, (req, res) => {
 app.post('/api/login', async (req, res) => {
     try {
         const { email, password } = req.body;
-        
-        // Find user by email
-        const user = await User.findOne({ email: email.toLowerCase() });
+        if (!email || !password) {
+            return res.status(400).json({ message: 'Email and password are required' });
+        }
+
+        const user = await User.findOne({ email });
         if (!user) {
             return res.status(401).json({ message: 'Invalid credentials' });
         }
 
-        // Verify password
-        const isValid = await bcrypt.compare(password, user.password);
-        if (!isValid) {
+        const isPasswordValid = await bcrypt.compare(password, user.password);
+        if (!isPasswordValid) {
             return res.status(401).json({ message: 'Invalid credentials' });
         }
 
@@ -719,32 +612,17 @@ app.post('/api/login', async (req, res) => {
         user.lastLogin = new Date();
         await user.save();
 
-        // Generate token with role
+        // Create token with role information
         const token = jwt.sign(
-            { 
-                userId: user._id,
-                email: user.email, 
-                username: user.username,
-                role: user.role,
-                tokenVersion: user.tokenVersion || 0
-            }, 
+            { id: user._id, email: user.email, role: user.role },
             process.env.JWT_SECRET,
-            { expiresIn: '24h' }
+            { expiresIn: '1d' }
         );
 
-        // Send response with user data
-        res.json({ 
-            token, 
-            role: user.role,
-            username: user.username,
-            email: user.email,
-            lastLogin: user.lastLogin,
-            defaultPage: 'home',
-            preferences: user.preferences || {}
-        });
+        res.json({ token, role: user.role });
     } catch (error) {
         console.error('Login error:', error);
-        res.status(500).json({ message: 'Login failed' });
+        res.status(500).json({ message: 'Server error during login' });
     }
 });
 
@@ -801,7 +679,7 @@ app.post('/api/register', async (req, res) => {
 });
 
 // Get all pages
-app.get('/api/pages', async (req, res) => {
+app.get('/api/pages', authenticateUser, async (req, res) => {
   try {
     console.log('Fetching all pages');
     const pages = await Page.find().sort({ order: 1 });
@@ -814,7 +692,7 @@ app.get('/api/pages', async (req, res) => {
 });
 
 // Get page by ID
-app.get('/api/pages/:id', async (req, res) => {
+app.get('/api/pages/:id', authenticateUser, async (req, res) => {
   try {
     const pageId = req.params.id;
     console.log('Fetching page:', pageId);
@@ -2347,4 +2225,43 @@ if (process.env.NODE_ENV !== 'vercel') {
   server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
   });
+}
+
+// Adding a default user if needed
+async function ensureDefaultUserExists() {
+    try {
+        // Check if admin user exists
+        const adminExists = await User.findOne({ email: process.env.ADMIN_EMAIL || 'eideken@hotmail.com' });
+        if (!adminExists) {
+            // Create admin user
+            console.log('📝 Creating default admin user');
+            const hashedPassword = await bcrypt.hash(process.env.ADMIN_PASSWORD || 'sword91', 10);
+            const adminUser = new User({
+                email: process.env.ADMIN_EMAIL || 'eideken@hotmail.com',
+                password: hashedPassword,
+                role: 'admin',
+                created: new Date()
+            });
+            await adminUser.save();
+            console.log('✅ Default admin user created successfully');
+        }
+
+        // Check if regular user exists
+        const userExists = await User.findOne({ email: process.env.USER_EMAIL || 'user@example.com' });
+        if (!userExists) {
+            // Create regular user
+            console.log('📝 Creating default regular user');
+            const hashedPassword = await bcrypt.hash(process.env.USER_PASSWORD || 'password123', 10);
+            const regularUser = new User({
+                email: process.env.USER_EMAIL || 'user@example.com',
+                password: hashedPassword,
+                role: 'user',
+                created: new Date()
+            });
+            await regularUser.save();
+            console.log('✅ Default regular user created successfully');
+        }
+    } catch (error) {
+        console.error('❌ Error ensuring default users exist:', error);
+    }
 }

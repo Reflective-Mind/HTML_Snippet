@@ -7,13 +7,16 @@ const PageManager = ({
     onPageAdd, 
     onPageRemove, 
     onPageUpdate,
-    onError 
+    onError,
+    isUserView = false  // New prop to identify user view mode
 }) => {
     const [showSettings, setShowSettings] = useState(false);
     const [editingPage, setEditingPage] = useState(null);
     const [defaultPage, setDefaultPage] = useState('home');
 
     const handlePageAdd = () => {
+        if (isUserView || !onPageAdd) return;
+        
         const pageName = prompt('Enter page name:');
         if (pageName) {
             try {
@@ -29,11 +32,15 @@ const PageManager = ({
     };
 
     const handlePageEdit = (page) => {
+        if (isUserView) return;
+        
         setEditingPage(page);
         setShowSettings(true);
     };
 
     const handlePageUpdate = () => {
+        if (isUserView || !onPageUpdate) return;
+        
         try {
             if (!editingPage.name.trim()) {
                 throw new Error('Page name cannot be empty');
@@ -47,6 +54,8 @@ const PageManager = ({
     };
 
     const handleDefaultPageChange = (pageId) => {
+        if (isUserView) return;
+        
         setDefaultPage(pageId);
         // Update in localStorage or backend
         localStorage.setItem('defaultPage', pageId);
@@ -65,13 +74,15 @@ const PageManager = ({
                                 >
                                     {page.name}
                                 </button>
-                                <button
-                                    className="btn btn-link text-secondary"
-                                    onClick={() => handlePageEdit(page)}
-                                >
-                                    ⚙️
-                                </button>
-                                {page.id !== 'home' && (
+                                {!isUserView && (
+                                    <button
+                                        className="btn btn-link text-secondary"
+                                        onClick={() => handlePageEdit(page)}
+                                    >
+                                        ⚙️
+                                    </button>
+                                )}
+                                {!isUserView && page.id !== 'home' && onPageRemove && (
                                     <button
                                         onClick={() => onPageRemove(page.id)}
                                         className="btn btn-danger btn-sm ms-1"
@@ -82,25 +93,27 @@ const PageManager = ({
                             </span>
                         ))}
                     </div>
-                    <div className="page-actions">
-                        <button 
-                            onClick={handlePageAdd}
-                            className="btn btn-success btn-sm"
-                        >
-                            + New Page
-                        </button>
-                        <button
-                            onClick={() => setShowSettings(true)}
-                            className="btn btn-secondary btn-sm ms-2"
-                        >
-                            Page Settings
-                        </button>
-                    </div>
+                    {!isUserView && (
+                        <div className="page-actions">
+                            <button 
+                                onClick={handlePageAdd}
+                                className="btn btn-success btn-sm"
+                            >
+                                + New Page
+                            </button>
+                            <button
+                                onClick={() => setShowSettings(true)}
+                                className="btn btn-secondary btn-sm ms-2"
+                            >
+                                Page Settings
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
 
-            {/* Page Settings Modal */}
-            {showSettings && (
+            {/* Page Settings Modal - Only shown in admin mode */}
+            {!isUserView && showSettings && (
                 <div className="modal show d-block">
                     <div className="modal-dialog">
                         <div className="modal-content">

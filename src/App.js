@@ -6,6 +6,7 @@ import SnippetContainer from './components/SnippetContainer';
 
 const App = () => {
     const [isAdmin, setIsAdmin] = useState(false);
+    const [isUser, setIsUser] = useState(false);
     const [pages, setPages] = useState([{ id: 'home', name: 'Home', snippets: [] }]);
     const [currentPage, setCurrentPage] = useState(localStorage.getItem('defaultPage') || 'home');
     const [email, setEmail] = useState('');
@@ -66,10 +67,10 @@ const App = () => {
 
     // Load pages from backend with retry logic
     useEffect(() => {
-        if (isAdmin) {
+        if (isAdmin || isUser) {
             loadPages();
         }
-    }, [isAdmin]);
+    }, [isAdmin, isUser]);
 
     const loadPages = async () => {
         try {
@@ -87,16 +88,25 @@ const App = () => {
         }
     };
 
-    // Enhanced admin authentication with rate limiting
+    // Enhanced login with support for both admin and regular users
     const handleLogin = async (e) => {
         e.preventDefault();
         try {
             setLoading(true);
             const response = await axios.post('/api/login', { email, password });
-            const { token } = response.data;
+            const { token, role } = response.data;
             localStorage.setItem('token', token);
-            localStorage.setItem('isAdmin', 'true');
-            setIsAdmin(true);
+            
+            if (role === 'admin') {
+                localStorage.setItem('isAdmin', 'true');
+                setIsAdmin(true);
+                setIsUser(false);
+            } else {
+                localStorage.setItem('isUser', 'true');
+                setIsUser(true);
+                setIsAdmin(false);
+            }
+            
             setError('');
             setRetryCount(0);
         } catch (err) {
@@ -219,9 +229,9 @@ const App = () => {
             )}
             {loading && <div className="loading-overlay">Loading...</div>}
             
-            {!isAdmin ? (
+            {!isAdmin && !isUser ? (
                 <div className="login-form p-4">
-                    <h2>Admin Login</h2>
+                    <h2>Login</h2>
                     <form onSubmit={handleLogin}>
                         <input
                             type="email"
@@ -246,7 +256,7 @@ const App = () => {
                         </button>
                     </form>
                 </div>
-            ) : (
+            ) : isAdmin ? (
                 <>
                     <div className="admin-toolbar">
                         <SnippetManager 
@@ -291,6 +301,46 @@ const App = () => {
                                 snippet={snippet}
                                 showPreview={showPreview}
                                 onUpdate={handleSnippetUpdate}
+                                onError={setError}
+                            />
+                        ))}
+                    </div>
+                </>
+            ) : (
+                // User view (non-admin)
+                <>
+                    <div className="user-toolbar">
+                        <button 
+                            onClick={() => {
+                                localStorage.removeItem('token');
+                                localStorage.removeItem('isUser');
+                                setIsUser(false);
+                                setRetryCount(0);
+                            }} 
+                            className="btn btn-outline-danger"
+                        >
+                            Logout
+                        </button>
+                    </div>
+
+                    <PageManager
+                        pages={pages}
+                        currentPage={currentPage}
+                        onPageChange={setCurrentPage}
+                        onPageAdd={null}  // Users can't add pages
+                        onPageRemove={null}  // Users can't remove pages
+                        onPageUpdate={null}  // Users can't update pages
+                        onError={setError}
+                        isUserView={true}  // Flag for user view mode
+                    />
+
+                    <div className="page-content preview-mode">
+                        {currentSnippets.map(snippet => (
+                            <SnippetContainer
+                                key={snippet.id}
+                                snippet={snippet}
+                                showPreview={true}  // Always in preview mode for users
+                                onUpdate={null}  // Users can't update snippets
                                 onError={setError}
                             />
                         ))}
