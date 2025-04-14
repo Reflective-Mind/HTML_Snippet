@@ -22,6 +22,12 @@ const App = () => {
         const baseURL = process.env.REACT_APP_API_URL || 'http://localhost:10000';
         axios.defaults.baseURL = baseURL;
         
+        console.log('Initializing axios with baseURL:', baseURL);
+        
+        // Clear any stale interceptors
+        axios.interceptors.request.eject(axios.interceptors.request.handlers?.[0]);
+        axios.interceptors.response.eject(axios.interceptors.response.handlers?.[0]);
+        
         // Add auth token to requests
         axios.interceptors.request.use(config => {
             const token = localStorage.getItem('token');
@@ -34,47 +40,27 @@ const App = () => {
             return Promise.reject(error);
         });
 
-        // Handle token expiration and retries
+        // Simplified response interceptor
         axios.interceptors.response.use(
             response => response,
             async error => {
                 console.log('Axios response error:', error.message, 'Status:', error.response?.status);
                 
-                // Only handle auth errors when they're actually auth related
-                if (error.response?.status === 401 && 
-                    error.response?.data?.message?.includes('token') && 
-                    retryCount < 3) {
-                    console.log('Token expired or invalid, handling auth error');
-                    
-                    // Don't immediately clear auth state - first try a refresh or retry
-                    setRetryCount(count => count + 1);
-                    setError('Session may have expired. Retrying...');
-                    
-                    // Wait before retry
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                    
-                    // If max retries reached, then clear auth
-                    if (retryCount >= 2) {
-                        console.log('Max retries reached, clearing auth state');
-                        localStorage.removeItem('token');
-                        localStorage.removeItem('isAdmin');
-                        localStorage.removeItem('isUser');
-                        setIsAdmin(false);
-                        setIsUser(false);
-                        setError('Session expired. Please login again.');
-                    } else {
-                        // Try the request again
-                        return axios(error.config);
-                    }
-                } else if (error.response?.status === 503 && retryCount < 3) {
-                    // Service unavailable - retry after delay
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                    setRetryCount(count => count + 1);
-                    return axios(error.config);
+                if (error.response?.status === 401) {
+                    console.log('Authentication error detected');
+                    // Clear auth state on 401 errors
+                    localStorage.removeItem('token');
+                    localStorage.removeItem('isAdmin');
+                    localStorage.removeItem('isUser');
+                    setIsAdmin(false);
+                    setIsUser(false);
+                    setError('Session expired. Please login again.');
+                    setLoading(false); // Ensure loading is turned off
                 } else if (!error.response && error.message.includes('Network Error')) {
-                    // Handle network errors separately
+                    // Handle network errors
                     console.log('Network error - server may be down');
                     setError('Network error. Server may be down. Please check your connection.');
+                    setLoading(false); // Ensure loading is turned off
                 }
                 return Promise.reject(error);
             }
@@ -83,20 +69,22 @@ const App = () => {
         // Check server health
         const checkHealth = async () => {
             try {
-                await axios.get('/api/health');
-                console.log('Server health check passed');
+                const response = await axios.get('/api/health');
+                console.log('Server health check passed:', response.data);
             } catch (err) {
                 console.error('Server health check failed:', err);
                 setError('Server connection issue. Please try again later.');
+                setLoading(false); // Ensure loading is turned off
             }
         };
         checkHealth();
 
         return () => {
-            // Clean up function
-            setRetryCount(0);
+            // Clean up interceptors on unmount
+            axios.interceptors.request.eject(axios.interceptors.request.handlers?.[0]);
+            axios.interceptors.response.eject(axios.interceptors.response.handlers?.[0]);
         };
-    }, [retryCount]);
+    }, []);  // Remove retryCount dependency
 
     // Initialize login if tokens are stored
     useEffect(() => {
@@ -150,29 +138,33 @@ const App = () => {
             
             console.log('Attempting login for:', email);
             const response = await axios.post('/api/login', { email, password });
+            console.log('Login response:', response.data);
+            
             const { token, role } = response.data;
             
             if (!token) {
                 throw new Error('No token received from server');
             }
             
+            // Clear previous auth state
+            localStorage.removeItem('isAdmin');
+            localStorage.removeItem('isUser');
+            
+            // Set new auth state
             localStorage.setItem('token', token);
             
             if (role === 'admin') {
                 localStorage.setItem('isAdmin', 'true');
-                localStorage.removeItem('isUser');
                 setIsAdmin(true);
                 setIsUser(false);
                 console.log('Logged in as admin');
             } else {
                 localStorage.setItem('isUser', 'true');
-                localStorage.removeItem('isAdmin');
-                setIsUser(true);
                 setIsAdmin(false);
+                setIsUser(true);
                 console.log('Logged in as regular user');
             }
             
-            setRetryCount(0);
             // Clear form fields
             setEmail('');
             setPassword('');
@@ -186,7 +178,7 @@ const App = () => {
                 setError('Login failed. Please try again.');
             }
         } finally {
-            setLoading(false);
+            setLoading(false); // Always ensure loading is turned off
         }
     };
 
