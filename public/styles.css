@@ -1,187 +1,174 @@
-.content-area {
-    position: relative;
-    min-height: calc(100vh - 120px);
-    background: #f8f9fa;
-    margin: 20px;
-    border: 1px dashed #ccc;
-    padding: 20px;
-    overflow: hidden;
+/* Basic styles for HTML Snippet Builder */
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
 }
 
-/* Responsive container for snippets in preview mode */
-#public-content {
+.app-container {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+.content-area {
+    flex: 1;
+    padding: 20px;
     position: relative;
-    min-height: calc(100vh - 120px);
-    width: 100%;
-    height: 100%;
+}
+
+#public-content {
+    padding: 20px;
+    max-width: 1200px;
+    margin: 0 auto;
 }
 
 .snippet {
     position: absolute;
-    border: 1px solid #ccc;
+    border: 1px solid transparent;
     background: white;
-    padding: 10px;
-    min-height: 100px;
-    min-width: 200px;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-    cursor: move;
-    overflow: visible;
-    resize: both;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    border-radius: 4px;
+    min-width: 50px;
+    min-height: 50px;
+    padding: 5px;
     z-index: 10;
-    transition: box-shadow 0.3s ease;
+    transition: border-color 0.2s;
 }
 
 .snippet:hover {
-    box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+    border-color: #0d6efd;
 }
 
 .snippet-content {
     width: 100%;
     height: 100%;
     overflow: hidden;
-    position: relative;
+    pointer-events: none;
 }
 
 .snippet-content iframe {
     width: 100%;
     height: 100%;
     border: none;
-    margin: 0;
-    padding: 0;
+    pointer-events: auto;
 }
 
 .snippet.editing {
-    border: 2px solid #007bff;
-    z-index: 20;
+    z-index: 100;
+    border-color: #0d6efd;
 }
 
 .snippet-controls {
     position: absolute;
     top: 5px;
     right: 5px;
-    display: none;
-    background: rgba(255,255,255,0.9);
-    padding: 5px;
-    border-radius: 4px;
+    display: flex;
+    gap: 5px;
     z-index: 100;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    opacity: 0;
+    transition: opacity 0.2s;
 }
 
 .snippet:hover .snippet-controls {
-    display: flex;
-    gap: 5px;
+    opacity: 1;
 }
 
-/* Preview mode adjustments */
 .preview-mode .snippet {
-    border: none;
-    box-shadow: none;
-    cursor: default;
-    resize: none;
-    /* Ensure the snippet positions and sizes are applied properly in % mode */
-    transition: left 0.2s ease, top 0.2s ease;
+    border-color: transparent !important;
+    box-shadow: none !important;
+    background: transparent !important;
 }
 
 .preview-mode .snippet-controls,
 .preview-mode .resize-handle {
-    display: none;
+    display: none !important;
 }
 
-/* Ensure snippet positioning is responsive */
 @media (max-width: 768px) {
     .snippet {
-        /* Limit size on small screens to prevent overflow */
-        max-width: 95% !important;
+        position: relative !important;
+        width: 100% !important;
+        height: auto !important;
+        margin-bottom: 15px;
+        left: 0 !important;
+        top: 0 !important;
     }
 }
 
-/* Make sure snippet content fits viewport in preview mode */
 .preview-mode .snippet-content {
-    overflow: auto;
+    pointer-events: auto;
 }
 
-/* Add support for download buttons */
 .download-button {
-    display: inline-block;
-    padding: 5px 10px;
-    background-color: #007bff;
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: #0d6efd;
     color: white;
-    border-radius: 4px;
-    cursor: pointer;
-    text-decoration: none;
-    font-size: 14px;
-    margin: 5px 0;
+    border: none;
+    border-radius: 50%;
+    width: 60px;
+    height: 60px;
+    font-size: 24px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    z-index: 1000;
 }
 
 .download-button:hover {
-    background-color: #0069d9;
+    background: #0b5ed7;
+    transform: scale(1.05);
 }
 
-/* Fixed admin toolbar at the top */
 #admin-toolbar,
-.admin-toolbar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    background-color: #f8f9fa;
-    padding: 10px;
+#user-toolbar {
+    background: #f8f9fa;
+    padding: 15px;
     border-bottom: 1px solid #dee2e6;
-    z-index: 1000;
-    height: 60px; /* Fixed height for the toolbar */
     display: flex;
+    justify-content: space-between;
     align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
 }
 
-/* User toolbar styling */
 .user-toolbar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    background-color: #f8f9fa;
-    padding: 10px;
-    border-bottom: 1px solid #dee2e6;
-    z-index: 1000;
-    height: 60px; /* Fixed height for the toolbar */
+    background: #f8f9fa;
+    padding: 10px 20px;
     display: flex;
     justify-content: flex-end;
-    align-items: center;
+    border-bottom: 1px solid #e9ecef;
 }
 
-/* Page navigation below the toolbar */
-#pages-nav,
-.page-manager .page-navigation {
-    position: fixed;
-    top: 60px; /* Position right below the toolbar */
-    left: 0;
-    right: 0;
+.user-toolbar .btn {
+    margin-left: 10px;
+}
+
+.user-toolbar .username {
+    margin-right: auto;
+    font-weight: 500;
+    color: #495057;
+}
+
+#pages-nav {
+    background: white;
     padding: 10px;
-    background: #fff; /* Changed to white for better contrast */
+    margin-bottom: 20px;
     border-bottom: 1px solid #dee2e6;
-    z-index: 900;
-    height: 60px; /* Fixed height for nav */
-    display: flex;
-    align-items: center;
 }
 
-/* Content area with sufficient margin to avoid toolbar overlap and proper dimensions */
 .content-area,
-.page-content {
-    margin-top: 140px; /* Toolbar (60px) + Page nav (60px) + margin (20px) */
-    margin-left: 20px;
-    margin-right: 20px;
-    padding: 20px;
-    min-height: 500px; /* Set a reasonable minimum height */
-    height: calc(100vh - 180px); /* Adjusted for header height */
-    max-width: calc(100vw - 40px); /* Prevent overflow to the right */
-    position: relative;
-    background: #fff;
-    border: 1px solid #e9ecef;
-    border-radius: 8px;
-    overflow: visible; /* Allow snippets to be dragged outside */
-    box-sizing: border-box; /* Include padding in width/height calculations */
-    z-index: 10; /* Ensure content area is above other elements */
+#editor-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+#editor-container {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 60px);
 }
 
 .page-button {
@@ -192,152 +179,160 @@
     position: fixed;
     top: 20px;
     right: 20px;
-    z-index: 2000;
-    min-width: 300px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    z-index: 9999;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    max-width: 400px;
+    opacity: 0.95;
 }
 
 .resize-handle {
     position: absolute;
-    bottom: 0;
-    right: 0;
-    width: 20px;
-    height: 20px;
+    width: 10px;
+    height: 10px;
+    background: white;
+    border: 1px solid #0d6efd;
+    z-index: 20;
+}
+
+.resize-handle.se {
+    bottom: -5px;
+    right: -5px;
     cursor: se-resize;
-    background: linear-gradient(135deg, transparent 50%, #007bff 50%);
-    opacity: 0.7;
-    z-index: 101;
-    transition: opacity 0.2s;
 }
 
 .snippet-container:hover .resize-handle {
-    opacity: 1;
-}
-
-/* Navigation Button Styles */
-.draggable-nav-button {
-    position: absolute;
-    z-index: 100;
-    user-select: none;
-    touch-action: none;
-}
-
-.draggable-nav-button .nav-button {
-    min-width: 120px;
-    padding: 8px 16px;
-    transition: transform 0.2s ease;
-    cursor: pointer;
-}
-
-.draggable-nav-button:hover .nav-button {
-    transform: scale(1.05);
-}
-
-.preview-mode .draggable-nav-button,
-#public-content .draggable-nav-button {
-    cursor: default;
-}
-
-.preview-mode .draggable-nav-button .nav-button,
-#public-content .draggable-nav-button .nav-button {
-    cursor: pointer;
-}
-
-.delete-nav-btn {
-    display: none;
-    position: absolute;
-    top: -10px;
-    right: -10px;
-    width: 24px;
-    height: 24px;
-    padding: 0;
-    border-radius: 50%;
-    z-index: 101;
-}
-
-.draggable-nav-button:hover .delete-nav-btn {
     display: block;
 }
 
+.draggable-nav-button {
+    position: absolute;
+    z-index: 10;
+    cursor: move;
+}
+
+.draggable-nav-button .nav-button {
+    cursor: pointer;
+    min-width: 100px;
+    border-radius: 4px;
+    border: 1px solid #0d6efd;
+    background-color: white;
+    color: #0d6efd;
+}
+
+.draggable-nav-button:hover .nav-button {
+    background-color: #0d6efd;
+    color: white;
+}
+
+.preview-mode .draggable-nav-button,
+.preview-mode .nav-button {
+    cursor: pointer;
+}
+
+.preview-mode .draggable-nav-button .nav-button,
+.preview-mode .draggable-nav-button .nav-button:hover {
+    opacity: 0.95;
+}
+
+.delete-nav-btn {
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: red;
+    color: white;
+    font-size: 14px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    display: none;
+}
+
+.draggable-nav-button:hover .delete-nav-btn {
+    display: flex;
+}
+
 .preview-mode .delete-nav-btn,
-#public-content .delete-nav-btn {
+.user-view .delete-nav-btn {
     display: none !important;
 }
 
-/* Modal Styles */
 .modal {
+    display: none;
     position: fixed;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    background-color: rgba(0, 0, 0, 0.5);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 2000;
+    background: rgba(0,0,0,0.5);
+    z-index: 1000;
 }
 
 .modal-dialog {
     background: white;
-    border-radius: 8px;
-    box-shadow: 0 2px 15px rgba(0, 0, 0, 0.2);
-    max-width: 500px;
-    width: 100%;
-    margin: 20px;
+    margin: 60px auto;
+    max-width: 600px;
+    border-radius: 5px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    overflow: hidden;
 }
 
-/* Snippet manager container */
 .snippet-manager {
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 5px;
+    margin-bottom: 20px;
     display: flex;
-    flex-wrap: wrap; /* Allow wrapping on small screens */
-    align-items: center;
+    flex-wrap: wrap;
     gap: 10px;
-    margin-right: 20px;
-    max-width: calc(100% - 300px); /* Leave space for other toolbar items */
 }
 
 .template-buttons {
     display: flex;
     flex-wrap: wrap;
-    gap: 5px;
+    gap: 10px;
+    margin-bottom: 10px;
 }
 
 .template-preview {
-    max-height: 300px;
-    overflow: auto;
-    background: #f5f5f5;
-    padding: 10px;
+    border: 1px solid #dee2e6;
     border-radius: 4px;
-    font-size: 12px;
+    padding: 10px;
+    margin-top: 10px;
+    background: white;
+    max-height: 200px;
+    overflow: auto;
 }
 
 .code-editor {
     font-family: monospace;
-    min-height: 300px;
     font-size: 14px;
+    line-height: 1.5;
+    tab-size: 2;
+    resize: vertical;
 }
 
-/* Admin Dashboard Styles */
 .admin-stats {
     background: white;
-    border-radius: 8px;
-    padding: 20px;
-    margin: 20px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    padding: 15px;
+    border-radius: 5px;
+    margin-bottom: 20px;
 }
 
 .stats-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 20px;
-    margin-top: 20px;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 15px;
 }
 
 .stat-item {
-    background: #f8f9fa;
-    border-radius: 8px;
     padding: 15px;
+    background: #f8f9fa;
+    border-radius: 4px;
     text-align: center;
 }
 
@@ -350,38 +345,35 @@
 .stat-value {
     font-size: 24px;
     font-weight: bold;
-    color: #007bff;
+    color: #0d6efd;
 }
 
-/* Admin panel layout */
 #admin-panel {
     display: flex;
-    min-height: 100vh;
+    flex-direction: column;
+    height: 100vh;
 }
 
 .admin-content {
     display: flex;
     flex: 1;
-    margin-top: 60px;
-    height: calc(100vh - 60px);
     overflow: hidden;
 }
 
 .admin-sidebar {
     width: 250px;
-    background: #f8f9fa;
-    padding: 20px;
-    border-right: 1px solid #dee2e6;
+    background: #343a40;
+    color: white;
+    padding: 15px;
     overflow-y: auto;
 }
 
 .admin-main {
     flex: 1;
-    padding: 20px;
+    padding: 15px;
     overflow-y: auto;
 }
 
-/* Loading overlay */
 .loading-overlay {
     position: fixed;
     top: 0;
@@ -390,272 +382,243 @@
     height: 100%;
     background: rgba(255, 255, 255, 0.8);
     display: flex;
-    align-items: center;
     justify-content: center;
-    z-index: 2000;
+    align-items: center;
+    z-index: 9999;
     font-size: 24px;
     font-weight: bold;
-    color: #007bff;
+    color: #0d6efd;
 }
 
-/* Ensure snippet container is positioned relative to page content */
 .snippet-container {
     position: absolute;
-    z-index: 20; /* Above page content */
-    box-sizing: border-box;
-    transition: transform 0.05s linear; /* Make dragging more responsive with shorter transition */
-    visibility: visible !important; /* Force visibility */
-    display: block !important; /* Ensure display */
+    z-index: 10;
+    cursor: move;
+    border: 1px solid transparent;
+    background: transparent;
+    min-width: 50px;
+    min-height: 50px;
 }
 
-/* Remove any transition that could affect layout */
 .snippet-container .snippet-content {
-    transition: none !important;
-    height: 100% !important;
-    width: 100% !important;
-    overflow: visible;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    cursor: move;
 }
 
-/* Ensure snippet content is visible regardless of user or admin view */
 .user-view .snippet-container,
-.preview-mode .snippet-container {
-    opacity: 1 !important;
-    visibility: visible !important;
-    display: block !important;
+.user-view .snippet-content {
+    cursor: default;
 }
 
-/* Preview mode and user view snippet styles */
 .preview-mode .snippet-container, 
+.preview-mode .snippet-content {
+    cursor: default;
+}
+
 .user-view .snippet-container {
-    border: none !important;
-    box-shadow: none !important;
-    resize: none !important;
-    cursor: default !important;
-    position: absolute !important;
-}
-
-/* User view specific styling for the page content area */
-.user-view .page-content {
     border: none;
-    background-color: #fff;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-    /* Ensure user view shows the exact same content size as admin */
-    min-height: 500px; 
-    height: calc(100vh - 180px);
-    position: relative;
+    background: transparent;
 }
 
-/* Make sure snippet controls in preview/user mode are not displayed */
 .preview-mode .snippet-controls,
-.preview-mode .resize-handle,
-.preview-mode .snippet-info,
-.user-view .snippet-controls,
-.user-view .resize-handle,
-.user-view .snippet-info {
-    display: none !important;
+.user-view .snippet-controls {
+    display: none;
 }
 
-/* Make content area appear differently in admin vs user mode */
 .admin-view .page-content:not(.preview-mode) {
-    background-image: linear-gradient(to right, rgba(200, 200, 200, 0.1) 1px, transparent 1px),
-                     linear-gradient(to bottom, rgba(200, 200, 200, 0.1) 1px, transparent 1px);
-    background-size: 20px 20px; /* Match the grid size */
-    border: 2px dashed #ccc;
-    background-color: #f9f9f9;
-}
-
-/* Add a visual indicator for the content boundaries */
-.admin-view .page-content:not(.preview-mode)::before {
-    content: "Content Area";
-    position: absolute;
-    top: -25px;
-    left: 10px;
-    background: #f8f9fa;
-    padding: 2px 10px;
+    background: #f9f9f9;
+    border: 1px dashed #ccc;
     border-radius: 4px;
-    font-size: 12px;
-    color: #6c757d;
-    border: 1px solid #dee2e6;
+    padding: 20px;
+    min-height: 300px;
 }
 
-/* Ensure proper mobile styling */
+.admin-view .page-content:not(.preview-mode)::before {
+    content: 'Page content area';
+    position: absolute;
+    top: 0;
+    left: 0;
+    background: #e5e5e5;
+    color: #666;
+    font-size: 12px;
+    padding: 2px 8px;
+    border-radius: 0 0 4px 0;
+    z-index: 1;
+}
+
 @media (max-width: 768px) {
     .content-area,
-    .page-content {
-        margin-top: 180px; /* Increased to account for potential wrapping in toolbars */
-        margin-left: 10px;
-        margin-right: 10px;
-        padding: 15px;
-        max-width: calc(100vw - 20px);
+    #editor-container {
+        height: auto;
+        overflow: auto;
     }
     
     .snippet-manager {
-        max-width: 100%;
+        flex-direction: column;
     }
     
     .admin-toolbar,
     .user-toolbar {
-        height: auto;
-        flex-wrap: wrap;
-        padding: 5px;
+        flex-direction: column;
+        align-items: stretch;
     }
     
     .page-manager .page-navigation {
-        height: auto;
         flex-wrap: wrap;
+        gap: 10px;
+        justify-content: center;
     }
 }
 
-/* Navigation styles specific to user/admin views */
 .user-page-manager .page-navigation {
-    background-color: #f8f9fa;
-    padding: 10px;
-    border-bottom: 1px solid #dee2e6;
+    display: flex;
+    justify-content: center;
+    margin: 15px 0;
+    flex-wrap: wrap;
 }
 
 .admin-page-manager .page-navigation {
-    background-color: #e9ecef;
-    padding: 10px;
-    border-bottom: 1px solid #dee2e6;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 15px 0;
+    flex-wrap: wrap;
 }
 
-/* Empty page styling */
 .empty-page-message {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    text-align: center;
-    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    min-height: 300px;
+    border: 2px dashed #dee2e6;
     border-radius: 8px;
-    background-color: rgba(255, 255, 255, 0.8);
-    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    background: #f8f9fa;
+    color: #6c757d;
 }
 
-/* Improved snippet control visibility */
 .snippet-container .snippet-controls {
     opacity: 0;
-    transition: opacity 0.2s ease;
+    transition: opacity 0.2s;
 }
 
 .snippet-container:hover .snippet-controls {
     opacity: 1;
 }
 
-/* Make sure snippet info (coordinates/size) doesn't affect layout */
 .snippet-info {
-    position: absolute;
-    bottom: -20px;
-    left: 0;
-    font-size: 10px;
-    color: #999;
-    white-space: nowrap;
-    pointer-events: none;
-    z-index: 5;
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    padding: 10px;
+    margin-bottom: 15px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
 }
 
-/* Login form improvements */
 .login-form {
     max-width: 400px;
-    margin: 100px auto;
-    padding: 30px;
+    margin: 50px auto;
     background: white;
     border-radius: 8px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
 }
 
-/* Preview mode styles */
+.login-form input, 
+.login-form button {
+    margin-bottom: 10px;
+}
+
 .preview-mode .page-content {
-    background-color: #fff; /* Clean white background for preview */
-    border: none; /* Remove border in preview mode */
+    background: white;
+    border: none;
+    padding: 0;
 }
 
-/* Fixed position in user view to mirror admin's layout */
 .user-view .empty-page-message {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    text-align: center;
-    width: 80%;
-    max-width: 500px;
+    border: none;
+    background: white;
+    margin-top: 50px;
+    color: #6c757d;
 }
 
-/* Fix for script execution issues */
+.user-view .empty-page-message p {
+    font-style: italic;
+    margin-top: 10px;
+    max-width: 400px;
+    text-align: center;
+}
+
 #admin-content-container script,
 #user-content-container script {
-    display: none !important; /* Hide original scripts after execution */
+    display: none;
 }
 
-/* Ensure scripts in snippets run properly */
 .snippet-content {
-    position: relative;
-    height: 100%;
     width: 100%;
-    overflow: auto; /* Change to auto to allow scrolling in content if needed */
+    height: 100%;
+    position: relative;
+    overflow: hidden;
 }
 
-/* Ensure snippets are properly displayed */
 .admin-view .page-content, 
 .user-view .page-content {
     position: relative;
-    display: block;
-    visibility: visible;
-    min-height: 400px;
+    width: 100%;
+    height: calc(100vh - 150px);
+    overflow: auto;
+    background: white;
 }
 
-/* Dragging-specific styles to make the experience smoother */
 .snippet-container.dragging {
-    z-index: 1000 !important; /* Ensure dragged snippet is above others */
-    opacity: 0.8 !important; /* Slightly transparent when dragging */
-    transition: none !important; /* Remove transition during drag for immediate response */
-    pointer-events: none !important; /* Allow dragging over other elements */
+    opacity: 0.8;
+    z-index: 100;
+    box-shadow: 0 0 8px rgba(0,0,0,0.2);
+    border-color: #0d6efd;
 }
 
-/* Make sure the iframe content is properly sized */
 .snippet-content iframe {
     width: 100%;
     height: 100%;
     border: none;
-    margin: 0;
-    padding: 0;
-    display: block;
+    pointer-events: auto;
 }
 
-/* Fix z-index issues */
+.login-form .alert {
+    position: static;
+}
+
 .snippet-container {
-    z-index: 50 !important;
+    user-select: none;
 }
 
-/* Make snippet content visible */
 .snippet-content {
-    min-height: 20px !important;
-    min-width: 20px !important;
-    background-color: white;
+    pointer-events: none;
 }
 
-/* Ensure proper absolute positioning of snippets */
 #admin-content-container,
 #user-content-container {
-    position: relative !important;
-    overflow: visible !important;
-    min-height: 500px !important;
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
 }
 
-/* Make navigation buttons work */
 button.btn {
-    cursor: pointer !important;
-    user-select: none !important;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
 }
 
-/* Force visibility for all content in user view */
 .user-view * {
-    visibility: visible !important;
+    user-select: none;
+    -webkit-user-select: none;
 }
 
-/* Force snippet display */
 .snippet-container {
-    display: block !important;
-    visibility: visible !important;
-    opacity: 1 !important;
+    position: absolute !important;
+    z-index: 10 !important;
 } 

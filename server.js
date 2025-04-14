@@ -11,6 +11,8 @@ const http = require('http');
 const path = require('path');
 const fs = require('fs');
 const helmet = require('helmet');
+const compression = require('compression');
+const cookieParser = require('cookie-parser');
 
 // Models imports
 const User = require('./models/User');
@@ -85,17 +87,40 @@ const apiLimiter = rateLimit({
     message: { message: 'Too many API requests, please try again later' }
 });
 
-// Middleware
+// Middleware setup
+app.use(helmet({
+    contentSecurityPolicy: false,  // Disable CSP for this demo app
+}));
+app.use(compression());
 app.use(cors());
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
-app.use('/api/login', limiter); // Apply stricter limits only to login
-app.use('/api/', apiLimiter); // Apply regular limits to other API routes
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 
-// Serve static files - order matters for file resolution
+// Serve static files - order matters!
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.static(path.join(__dirname, 'src')));
 app.use(express.static(__dirname));
+
+// Special route for favicon
+app.get('/favicon.ico', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'favicon.ico'));
+});
+
+// Special route for manifest.json
+app.get('/manifest.json', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'manifest.json'));
+});
+
+// Special route for logo
+app.get('/logo192.png', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'logo192.png'));
+});
+
+// Special route for styles.css
+app.get('/styles.css', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'styles.css'));
+});
 
 // Set up security middleware with more permissive CSP for development
 app.use(helmet({
@@ -2269,7 +2294,7 @@ module.exports = app;
 
 // Start the server if we're not in a serverless environment
 if (process.env.NODE_ENV !== 'vercel') {
-  const PORT = process.env.PORT || 5000;
+  const PORT = process.env.PORT || 10000;
   server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
   });
