@@ -815,7 +815,30 @@ async function makeRequest(url, options = {}) {
 }
 
 async function getCurrentPage() {
-    return await makeRequest(`/api/pages/${currentPage}`);
+    try {
+        // Check if we're in fallback mode (using the fallback admin token)
+        const isInFallbackMode = token === 'admin_fallback_token';
+        
+        if (isInFallbackMode) {
+            // In fallback mode, get the page from localStorage
+            console.log('Using fallback mode for getting current page');
+            const storedPages = JSON.parse(localStorage.getItem('fallbackPages') || '{}');
+            const page = storedPages[currentPage] || {
+                id: currentPage,
+                name: currentPage.charAt(0).toUpperCase() + currentPage.slice(1),
+                snippets: [],
+                navButtons: []
+            };
+            
+            return page;
+        } else {
+            // Normal mode - use API
+            return await makeRequest(`/api/pages/${currentPage}`);
+        }
+    } catch (error) {
+        console.error('Error getting current page:', error);
+        return null;
+    }
 }
 
 async function updatePage(pageData) {
@@ -875,8 +898,35 @@ async function loadPageContent(pageId) {
             existingDashboard.remove();
         }
         
+        // Check if we're in fallback mode (using the fallback admin token)
+        const isInFallbackMode = token === 'admin_fallback_token';
+        
+        let page;
         try {
-            const page = await makeRequest(`/api/pages/${pageId}`);
+            if (isInFallbackMode) {
+                // In fallback mode, try to get the page from localStorage
+                const storedPages = JSON.parse(localStorage.getItem('fallbackPages') || '{}');
+                page = storedPages[pageId];
+                
+                // If page doesn't exist yet in localStorage, create a basic structure
+                if (!page) {
+                    page = {
+                        id: pageId,
+                        name: pageId.charAt(0).toUpperCase() + pageId.slice(1),
+                        snippets: [],
+                        navButtons: []
+                    };
+                    // Store it right away
+                    storedPages[pageId] = page;
+                    localStorage.setItem('fallbackPages', JSON.stringify(storedPages));
+                }
+                
+                console.log('Using fallback mode with local page data:', page);
+            } else {
+                // Regular API request
+                page = await makeRequest(`/api/pages/${pageId}`);
+            }
+            
             if (!page) {
                 throw new Error('Page not found or empty response received');
             }
@@ -935,15 +985,36 @@ async function loadPageContent(pageId) {
         } catch (error) {
             console.error('Error loading page content:', error);
             
-            // If this is a page not found error, try to create the page
-            if (error.message.includes('not found') && pageId === 'home') {
-                try {
-                    console.log('Creating home page as it was not found');
-                    await createPage('Home');
-                    await loadPageContent('home');
+            // If this is a page not found error and we're in fallback mode, create the page
+            if (error.message.includes('not found') || error.message.includes('Session expired')) {
+                if (isInFallbackMode) {
+                    console.log('Failed to load page, creating fallback page');
+                    // Create a basic page structure for fallback mode
+                    const fallbackPage = {
+                        id: pageId,
+                        name: pageId.charAt(0).toUpperCase() + pageId.slice(1),
+                        snippets: [],
+                        navButtons: []
+                    };
+                    
+                    // Store in localStorage
+                    const storedPages = JSON.parse(localStorage.getItem('fallbackPages') || '{}');
+                    storedPages[pageId] = fallbackPage;
+                    localStorage.setItem('fallbackPages', JSON.stringify(storedPages));
+                    
+                    // Render the empty page
+                    renderSnippets([], []);
+                    console.log('Fallback page created:', fallbackPage);
                     return;
-                } catch (createError) {
-                    console.error('Failed to create home page:', createError);
+                } else if (pageId === 'home') {
+                    try {
+                        console.log('Creating home page as it was not found');
+                        await createPage('Home');
+                        await loadPageContent('home');
+                        return;
+                    } catch (createError) {
+                        console.error('Failed to create home page:', createError);
+                    }
                 }
             }
             
@@ -984,7 +1055,49 @@ async function switchPage(pageId) {
 
 async function loadPages() {
     try {
-        const pages = await makeRequest('/api/pages');
+        // Check if we're in fallback mode (using the fallback admin token)
+        const isInFallbackMode = token === 'admin_fallback_token';
+        
+        let pages;
+        if (isInFallbackMode) {
+            // In fallback mode, get pages from localStorage
+            console.log('Using fallback mode for loading pages');
+            const storedPages = JSON.parse(localStorage.getItem('fallbackPages') || '{}');
+            
+            // Convert from object to array
+            pages = Object.values(storedPages);
+            
+            // If no pages exist in localStorage, create home page
+            if (pages.length === 0) {
+                const homePage = {
+                    id: 'home',
+                    name: 'Home',
+                    snippets: [],
+                    navButtons: [],
+                    isDefault: true
+                };
+                
+                // Add meshcreator page as well
+                const meshcreatorPage = {
+                    id: 'meshcreator',
+                    name: 'MeshCreator',
+                    snippets: [],
+                    navButtons: [],
+                    isDefault: false
+                };
+                
+                // Store in localStorage
+                storedPages['home'] = homePage;
+                storedPages['meshcreator'] = meshcreatorPage;
+                localStorage.setItem('fallbackPages', JSON.stringify(storedPages));
+                
+                pages = [homePage, meshcreatorPage];
+            }
+        } else {
+            // Normal mode - use API
+            pages = await makeRequest('/api/pages');
+        }
+        
         if (!pages || !Array.isArray(pages)) {
             throw new Error('Invalid pages data received');
         }
@@ -993,8 +1106,25 @@ async function loadPages() {
         if (pages.length === 0) {
             console.log('No pages found, creating default home page');
             try {
-                await createPage('Home');
-                return loadPages(); // Retry loading pages after creating default
+                if (isInFallbackMode) {
+                    // Create a default page in localStorage
+                    const homePage = {
+                        id: 'home',
+                        name: 'Home',
+                        snippets: [],
+                        navButtons: [],
+                        isDefault: true
+                    };
+                    
+                    const storedPages = JSON.parse(localStorage.getItem('fallbackPages') || '{}');
+                    storedPages['home'] = homePage;
+                    localStorage.setItem('fallbackPages', JSON.stringify(storedPages));
+                    
+                    pages = [homePage];
+                } else {
+                    await createPage('Home');
+                    return loadPages(); // Retry loading pages after creating default
+                }
             } catch (error) {
                 console.error('Failed to create default page:', error);
                 // Use a fallback page structure if we can't create one
@@ -1171,36 +1301,85 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 async function addSnippet(html) {
-    if (!html) {
-        console.error('No HTML provided to addSnippet');
-        return;
-    }
-    
-    console.log('Adding snippet with HTML');
-    
     try {
-        const page = await getCurrentPage();
+        console.log('Adding snippet with HTML');
+
+        // Check if we're in fallback mode (using the fallback admin token)
+        const isInFallbackMode = token === 'admin_fallback_token';
+        
+        // Get current page
+        let page;
+        
+        if (isInFallbackMode) {
+            // In fallback mode, try to get the page from localStorage
+            console.log('Using fallback mode for adding snippets');
+            const storedPages = JSON.parse(localStorage.getItem('fallbackPages') || '{}');
+            page = storedPages[currentPage] || {
+                id: currentPage,
+                name: currentPage.charAt(0).toUpperCase() + currentPage.slice(1),
+                snippets: []
+            };
+        } else {
+            // Normal mode - get page from API
+            page = await makeRequest(`/api/pages/${currentPage}`);
+        }
+        
+        if (!page) {
+            throw new Error('Could not load current page');
+        }
+        
         console.log('Current page for adding snippet:', page);
         
+        // Create new snippet object
         const newSnippet = {
-            id: Date.now(),
-            html,
-            position: { x: 20, y: 20 },
-            size: { width: 400, height: 300 }
+            id: Date.now(), // Use timestamp as unique ID
+            html: html,
+            position: {
+                x: 50,
+                y: 50
+            },
+            size: {
+                width: 400,
+                height: 300
+            }
         };
         
+        // Add the new snippet to the page's snippets array
         const updatedSnippets = [...(page.snippets || []), newSnippet];
         
+        // Update the page with the new snippet
         console.log('Updating page with new snippet');
-        await updatePage({ ...page, snippets: updatedSnippets });
         
-        console.log('Reloading page content');
-        await loadPageContent(currentPage);
+        if (isInFallbackMode) {
+            // In fallback mode, store page in localStorage
+            page.snippets = updatedSnippets;
+            const storedPages = JSON.parse(localStorage.getItem('fallbackPages') || '{}');
+            storedPages[currentPage] = page;
+            localStorage.setItem('fallbackPages', JSON.stringify(storedPages));
+            
+            // Show success message
+            showAlert('Snippet added successfully (in local mode)', 'success');
+            
+            // Reload page content to show the new snippet
+            console.log('Reloading page content');
+            await loadPageContent(currentPage);
+        } else {
+            // Normal mode - update via API
+            await updatePage({
+                ...page,
+                snippets: updatedSnippets
+            });
+            
+            // Reload page content to show the new snippet
+            console.log('Reloading page content');
+            await loadPageContent(currentPage);
+        }
         
-        showAlert('Snippet added successfully', 'success');
+        return newSnippet;
     } catch (error) {
         console.error('Error adding snippet:', error);
         showAlert(`Failed to add snippet: ${error.message}`, 'danger');
+        return null;
     }
 }
 
@@ -1229,372 +1408,43 @@ async function deleteSnippet(snippetId) {
     try {
         if (!confirm('Are you sure you want to delete this snippet?')) return;
         
-        const page = await getCurrentPage();
-        if (!page) throw new Error('Failed to get current page');
-
-        const updatedSnippets = page.snippets.filter(s => s.id !== snippetId);
-        await updatePage({ ...page, snippets: updatedSnippets });
-        await loadPageContent(currentPage);
-        showAlert('Snippet deleted successfully', 'success');
+        // Check if we're in fallback mode (using the fallback admin token)
+        const isInFallbackMode = token === 'admin_fallback_token';
+        
+        if (isInFallbackMode) {
+            // In fallback mode, delete snippet from localStorage
+            const storedPages = JSON.parse(localStorage.getItem('fallbackPages') || '{}');
+            const page = storedPages[currentPage];
+            
+            if (!page || !Array.isArray(page.snippets)) {
+                console.error('Cannot find page or snippets in local storage');
+                showAlert('Failed to find page data', 'danger');
+                return;
+            }
+            
+            // Filter out the snippet to delete
+            page.snippets = page.snippets.filter(s => s.id !== snippetId);
+            
+            // Save back to localStorage
+            storedPages[currentPage] = page;
+            localStorage.setItem('fallbackPages', JSON.stringify(storedPages));
+            
+            // Update the view
+            showAlert('Snippet deleted successfully', 'success');
+            await loadPageContent(currentPage);
+        } else {
+            // Normal mode - use API
+            const page = await getCurrentPage();
+            if (!page) throw new Error('Failed to get current page');
+            
+            const updatedSnippets = page.snippets.filter(s => s.id !== snippetId);
+            await updatePage({ ...page, snippets: updatedSnippets });
+            await loadPageContent(currentPage);
+            showAlert('Snippet deleted successfully', 'success');
+        }
     } catch (error) {
         console.error('Delete error:', error);
         showAlert(`Failed to delete snippet: ${error.message}`, 'danger');
-    }
-}
-
-function renderPages(pages) {
-    if (!pagesNav) {
-        console.error('pagesNav element not found');
-        return;
-    }
-    
-    console.log('Rendering pages:', pages);
-    
-    // Clear existing buttons first
-    pagesNav.innerHTML = '';
-    
-    // Create buttons programmatically instead of using inline onclick
-    pages.forEach(page => {
-        const button = document.createElement('button');
-        button.className = `btn ${currentPage === page.id ? 'btn-primary' : 'btn-outline-primary'} page-button mx-1`;
-        button.setAttribute('data-page-id', page.id);
-        button.textContent = page.name;
-        
-        // Add direct click handler for reliable navigation
-        button.addEventListener('click', function(e) {
-            e.preventDefault();
-            console.log('Navigation button clicked for:', page.id);
-            navigateToPage(page.id);
-        });
-        
-        pagesNav.appendChild(button);
-    });
-    
-    console.log('Page navigation buttons rendered');
-}
-
-function renderSnippets(snippets = [], navButtons = []) {
-    // Get the appropriate container based on mode
-    let container = isPreviewMode ? document.getElementById('public-content') : document.getElementById('content');
-    
-    if (!container) {
-        console.error('Container element not found for rendering snippets. isPreviewMode:', isPreviewMode);
-        
-        // Create the container if it doesn't exist
-        container = document.createElement('div');
-        container.id = isPreviewMode ? 'public-content' : 'content';
-        container.className = 'page-content';
-        container.style.display = 'block';
-        container.style.position = 'relative';
-        container.style.minHeight = '500px';  // Set a minimum height
-        container.style.width = '100%';
-        
-        // Append to root element or body
-        const root = document.getElementById('root');
-        if (root) {
-            root.appendChild(container);
-        } else {
-            document.body.appendChild(container);
-        }
-        
-        showAlert('Created new container for snippets', 'info');
-    }
-    
-    console.log('Rendering snippets to container:', container.id, 'Count:', snippets.length);
-    console.log('Navigation buttons:', navButtons.length);
-    
-    // First clear existing content
-    container.innerHTML = '';
-    
-    // Make sure container has proper styles for snippet positioning
-    container.style.position = 'relative';
-    container.style.minHeight = '500px';
-    
-    // Get container dimensions for relative positioning
-    let containerWidth = container.offsetWidth;
-    let containerHeight = container.offsetHeight;
-    
-    // If dimensions are zero (container not in DOM yet), use defaults
-    if (containerWidth <= 0) containerWidth = window.innerWidth || 1000; 
-    if (containerHeight <= 0) containerHeight = 500;
-    
-    console.log('Container dimensions:', containerWidth, 'x', containerHeight);
-    
-    // Add snippets to the container
-    if (snippets && Array.isArray(snippets)) {
-        snippets.forEach(snippet => {
-            if (!snippet || typeof snippet !== 'object') {
-                console.warn('Invalid snippet data:', snippet);
-                return; // Skip invalid snippets
-            }
-            
-            const snippetDiv = document.createElement('div');
-            snippetDiv.className = 'snippet';
-            snippetDiv.id = `snippet-${snippet.id}`;
-            snippetDiv.dataset.snippetId = snippet.id; // Add data attribute for easier access
-            
-            // Set position and size with bounds checking to prevent off-screen placement
-            let xPos = snippet.position?.x || 0;
-            let yPos = snippet.position?.y || 0;
-            
-            // Ensure snippets aren't off screen
-            const maxX = Math.max(containerWidth - 150, 50);
-            const maxY = Math.max(containerHeight - 150, 50);
-            
-            xPos = Math.min(Math.max(0, xPos), maxX);
-            yPos = Math.min(Math.max(0, yPos), maxY);
-            
-            // Store pixel positions
-            snippetDiv.dataset.originalX = xPos;
-            snippetDiv.dataset.originalY = yPos;
-            
-            // Use pixel positioning
-            snippetDiv.style.position = 'absolute';
-            snippetDiv.style.left = `${xPos}px`;
-            snippetDiv.style.top = `${yPos}px`;
-            
-            // Set size with sensible defaults
-            const width = snippet.size?.width || 400;
-            const height = snippet.size?.height || 300;
-            snippetDiv.style.width = `${width}px`;
-            snippetDiv.style.height = `${height}px`;
-            
-            // Create snippet content
-            const content = document.createElement('div');
-            content.className = 'snippet-content';
-            
-            const iframe = document.createElement('iframe');
-            iframe.id = `frame-${snippet.id}`;
-            iframe.style.width = '100%';
-            iframe.style.height = '100%';
-            iframe.style.border = 'none';
-            iframe.srcdoc = snippet.html || '<p>Empty snippet</p>';
-            // Update sandbox attributes to allow downloads and file operations
-            iframe.sandbox = 'allow-scripts allow-same-origin allow-modals allow-downloads allow-forms allow-popups';
-            
-            content.appendChild(iframe);
-            snippetDiv.appendChild(content);
-            
-            // Add controls if not in preview mode
-            if (!isPreviewMode) {
-                const controls = document.createElement('div');
-                controls.className = 'snippet-controls';
-                
-                // Use data attributes instead of inline onclick for better reliability
-                const editBtn = document.createElement('button');
-                editBtn.className = 'btn btn-sm btn-primary';
-                editBtn.textContent = 'Edit';
-                editBtn.dataset.action = 'edit';
-                editBtn.dataset.snippetId = snippet.id;
-                
-                const deleteBtn = document.createElement('button');
-                deleteBtn.className = 'btn btn-sm btn-danger';
-                deleteBtn.textContent = 'Delete';
-                deleteBtn.dataset.action = 'delete';
-                deleteBtn.dataset.snippetId = snippet.id;
-                
-                controls.appendChild(editBtn);
-                controls.appendChild(deleteBtn);
-                
-                // Add event listeners directly to the buttons
-                editBtn.addEventListener('click', () => editSnippet(snippet.id));
-                deleteBtn.addEventListener('click', () => deleteSnippet(snippet.id));
-                
-                const resizeHandle = document.createElement('div');
-                resizeHandle.className = 'resize-handle';
-                
-                snippetDiv.appendChild(controls);
-                snippetDiv.appendChild(resizeHandle);
-            }
-            
-            container.appendChild(snippetDiv);
-        });
-    } else {
-        console.warn('Invalid snippets array:', snippets);
-    }
-    
-    // If no snippets, show empty state
-    if (!snippets || !Array.isArray(snippets) || snippets.length === 0) {
-        console.log('Rendering empty state message');
-        const emptyState = document.createElement('div');
-        emptyState.className = 'empty-page-message text-center p-5 mt-5';
-        
-        // Set different messages based on role and mode
-        const isAdminView = userRole === 'admin' && !isPreviewMode;
-        const title = isAdminView ? 'This page is empty' : 'This page has no content yet';
-        const message = isAdminView ? 
-            'Use the "Add Snippet" button above to add content to this page.' : 
-            'The administrator has not added any content to this page yet.';
-        
-        emptyState.innerHTML = `
-            <div class="card shadow">
-                <div class="card-body">
-                    <h4 class="card-title">${title}</h4>
-                    <p class="card-text">${message}</p>
-                    ${isAdminView ? '<button id="add-snippet-now" class="btn btn-success mt-3">Add Snippet Now</button>' : ''}
-                </div>
-            </div>
-        `;
-        
-        container.appendChild(emptyState);
-        
-        // Add event listener to the "Add Snippet Now" button if it exists
-        if (isAdminView) {
-            const addSnippetNowBtn = emptyState.querySelector('#add-snippet-now');
-            if (addSnippetNowBtn) {
-                addSnippetNowBtn.addEventListener('click', () => {
-                    const html = prompt('Enter HTML for the snippet:');
-                    if (html) {
-                        addSnippet(html);
-                    }
-                });
-            }
-        }
-    }
-
-    // Then render navigation buttons
-    if (navButtons && Array.isArray(navButtons) && typeof renderNavigationButtons === 'function') {
-        renderNavigationButtons(navButtons);
-    } else {
-        console.log('No navigation buttons to render or renderNavigationButtons function not available');
-    }
-
-    if (!isPreviewMode && typeof setupDragAndResize === 'function') {
-        setupDragAndResize();
-    } else {
-        console.log('Skip setupDragAndResize - isPreviewMode:', isPreviewMode);
-    }
-    
-    // After rendering snippets, initialize any other required functionality
-    if (typeof initializeFileDownloadHandler === 'function') {
-        setTimeout(initializeFileDownloadHandler, 500);
-    }
-}
-
-// Debounce function for position/size updates
-function debounce(func, wait) {
-    return function executedFunction(...args) {
-        const later = () => {
-            clearTimeout(updateTimeout);
-            func(...args);
-        };
-        clearTimeout(updateTimeout);
-        updateTimeout = setTimeout(later, wait);
-    };
-}
-
-// Throttle function for frequent updates
-function throttle(func, limit) {
-    let inThrottle;
-    return function executedFunction(...args) {
-        if (!inThrottle) {
-            func(...args);
-            inThrottle = true;
-            setTimeout(() => inThrottle = false, limit);
-        }
-    };
-}
-
-// Debounced update functions
-const debouncedUpdatePosition = debounce(async (snippetId, position) => {
-    try {
-        console.log(`Saving position for snippet ${snippetId}:`, position);
-        const page = await getCurrentPage();
-        if (!page) throw new Error('Failed to get current page');
-
-        // Find the snippet to update
-        const snippetIndex = page.snippets.findIndex(s => s.id === snippetId);
-        if (snippetIndex === -1) {
-            console.error(`Snippet ${snippetId} not found in current page`);
-            return;
-        }
-
-        // Create a new array with the updated snippet
-        const updatedSnippets = [...page.snippets];
-        updatedSnippets[snippetIndex] = {
-            ...updatedSnippets[snippetIndex],
-            position
-        };
-
-        // Save the updated page
-        const result = await updatePage({ 
-            ...page, 
-            snippets: updatedSnippets 
-        });
-        
-        console.log(`Position saved for snippet ${snippetId}:`, position);
-        showAlert('Position saved', 'success', 1000); // Brief success message
-    } catch (error) {
-        console.error('Position update error:', error);
-        showAlert('Failed to save position: ' + error.message, 'danger');
-    }
-}, 300); // Reduce debounce time for more responsive saves
-
-const debouncedUpdateSize = debounce(async (snippetId, size) => {
-    try {
-        console.log(`Saving size for snippet ${snippetId}:`, size);
-        const page = await getCurrentPage();
-        if (!page) throw new Error('Failed to get current page');
-
-        // Find the snippet to update
-        const snippetIndex = page.snippets.findIndex(s => s.id === snippetId);
-        if (snippetIndex === -1) {
-            console.error(`Snippet ${snippetId} not found in current page`);
-            return;
-        }
-
-        // Create a new array with the updated snippet
-        const updatedSnippets = [...page.snippets];
-        updatedSnippets[snippetIndex] = {
-            ...updatedSnippets[snippetIndex],
-            size
-        };
-
-        // Save the updated page
-        const result = await updatePage({ 
-            ...page, 
-            snippets: updatedSnippets 
-        });
-        
-        console.log(`Size saved for snippet ${snippetId}:`, size);
-        showAlert('Size saved', 'success', 1000); // Brief success message
-    } catch (error) {
-        console.error('Size update error:', error);
-        showAlert('Failed to save size: ' + error.message, 'danger');
-    }
-}, 300); // Reduce debounce time for more responsive saves
-
-// Function to forcefully save the position immediately (no debounce)
-async function savePositionImmediately(snippetId, position) {
-    try {
-        console.log(`Saving position immediately for snippet ${snippetId}:`, position);
-        const page = await getCurrentPage();
-        if (!page) throw new Error('Failed to get current page');
-
-        // Find the snippet to update
-        const snippetIndex = page.snippets.findIndex(s => s.id === snippetId);
-        if (snippetIndex === -1) {
-            console.error(`Snippet ${snippetId} not found in current page`);
-            return;
-        }
-
-        // Create a new array with the updated snippet
-        const updatedSnippets = [...page.snippets];
-        updatedSnippets[snippetIndex] = {
-            ...updatedSnippets[snippetIndex],
-            position
-        };
-
-        // Save the updated page
-        await updatePage({ 
-            ...page, 
-            snippets: updatedSnippets 
-        });
-        
-        console.log(`Position saved immediately for snippet ${snippetId}:`, position);
-    } catch (error) {
-        console.error('Immediate position update error:', error);
-        showAlert('Failed to save position: ' + error.message, 'danger');
     }
 }
 
@@ -1602,33 +1452,59 @@ async function savePositionImmediately(snippetId, position) {
 async function saveSizeImmediately(snippetId, size) {
     try {
         console.log(`Saving size immediately for snippet ${snippetId}:`, size);
-        const page = await getCurrentPage();
-        if (!page) throw new Error('Failed to get current page');
-
-        // Find the snippet to update
-        const snippetIndex = page.snippets.findIndex(s => s.id === snippetId);
-        if (snippetIndex === -1) {
-            console.error(`Snippet ${snippetId} not found in current page`);
-            return;
-        }
-
-        // Create a new array with the updated snippet
-        const updatedSnippets = [...page.snippets];
-        updatedSnippets[snippetIndex] = {
-            ...updatedSnippets[snippetIndex],
-            size
-        };
-
-        // Save the updated page
-        await updatePage({ 
-            ...page, 
-            snippets: updatedSnippets 
-        });
         
-        console.log(`Size saved immediately for snippet ${snippetId}:`, size);
+        // Check if we're in fallback mode (using the fallback admin token)
+        const isInFallbackMode = token === 'admin_fallback_token';
+        
+        if (isInFallbackMode) {
+            // In fallback mode, update size in localStorage
+            const storedPages = JSON.parse(localStorage.getItem('fallbackPages') || '{}');
+            const page = storedPages[currentPage];
+            
+            if (!page || !Array.isArray(page.snippets)) {
+                console.error('Cannot find page or snippets in local storage');
+                return;
+            }
+            
+            // Find and update the snippet size
+            const snippetIndex = page.snippets.findIndex(s => s.id === snippetId);
+            if (snippetIndex === -1) {
+                console.error(`Snippet ${snippetId} not found in local storage`);
+                return;
+            }
+            
+            // Update the size
+            page.snippets[snippetIndex].size = size;
+            
+            // Save back to localStorage
+            storedPages[currentPage] = page;
+            localStorage.setItem('fallbackPages', JSON.stringify(storedPages));
+            console.log('Size saved to local storage');
+        } else {
+            // Normal mode - use API
+            const page = await getCurrentPage();
+            if (!page) throw new Error('Failed to get current page');
+
+            // Find the snippet to update
+            const snippetIndex = page.snippets.findIndex(s => s.id === snippetId);
+            if (snippetIndex === -1) {
+                console.error(`Snippet ${snippetId} not found in current page`);
+                return;
+            }
+
+            // Create a new array with the updated snippet
+            const updatedSnippets = [...page.snippets];
+            updatedSnippets[snippetIndex] = {
+                ...updatedSnippets[snippetIndex],
+                size
+            };
+
+            // Update the page with the new snippet data
+            await updatePage({ ...page, snippets: updatedSnippets });
+            console.log('Size saved to server');
+        }
     } catch (error) {
-        console.error('Immediate size update error:', error);
-        showAlert('Failed to save size: ' + error.message, 'danger');
+        console.error('Error saving size:', error);
     }
 }
 
