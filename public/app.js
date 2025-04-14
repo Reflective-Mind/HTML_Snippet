@@ -52,10 +52,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize the view based on authentication
     updateView();
     
-    // Add event listeners to buttons
+    // Add event listeners to buttons - properly check if they exist first
     const addPageBtn = document.getElementById('add-page-btn');
     if (addPageBtn) {
         addPageBtn.addEventListener('click', showCreatePageModal);
+        console.log('Added event listener to Add Page button');
+    } else {
+        console.warn('Add Page button not found in DOM');
     }
     
     const addSnippetBtn = document.getElementById('add-snippet-btn');
@@ -66,19 +69,27 @@ document.addEventListener('DOMContentLoaded', () => {
                 addSnippet(html);
             }
         });
+        console.log('Added event listener to Add Snippet button');
+    } else {
+        console.warn('Add Snippet button not found in DOM');
     }
     
     // Add explicit handlers to navigation buttons
     const pageButtons = document.querySelectorAll('.page-button');
-    pageButtons.forEach(button => {
-        button.addEventListener('click', function() {
-            const pageId = this.getAttribute('data-page-id');
-            if (pageId) {
-                console.log('Page button clicked, navigating to page:', pageId);
-                navigateToPage(pageId);
-            }
+    if (pageButtons.length > 0) {
+        pageButtons.forEach(button => {
+            button.addEventListener('click', function() {
+                const pageId = this.getAttribute('data-page-id');
+                if (pageId) {
+                    console.log('Page button clicked, navigating to page:', pageId);
+                    navigateToPage(pageId);
+                }
+            });
         });
-    });
+        console.log(`Added event listeners to ${pageButtons.length} page buttons`);
+    } else {
+        console.log('No page buttons found in DOM yet');
+    }
     
     // Setup event listeners for the login form
     const loginForm = document.getElementById('login-form');
@@ -89,10 +100,39 @@ document.addEventListener('DOMContentLoaded', () => {
             const password = document.getElementById('password').value;
             await login(email, password);
         });
+        console.log('Added event listener to login form');
+    } else {
+        console.warn('Login form not found in DOM');
+    }
+    
+    // Setup preview toggle button
+    const previewToggleBtn = document.getElementById('preview-toggle-btn');
+    if (previewToggleBtn) {
+        previewToggleBtn.addEventListener('click', togglePreviewMode);
+        console.log('Added event listener to preview toggle button');
+    } else {
+        console.warn('Preview toggle button not found in DOM');
+    }
+    
+    // Setup logout button
+    const logoutBtn = document.getElementById('logoutBtn');
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', logout);
+        console.log('Added event listener to logout button');
+    } else {
+        console.warn('Logout button not found in DOM');
     }
     
     // Setup drag and resize functionality
     setupDragAndResize();
+    
+    // Hide splash screen if it exists
+    const splashScreen = document.getElementById('splash-screen');
+    if (splashScreen) {
+        setTimeout(() => {
+            splashScreen.style.display = 'none';
+        }, 1000);
+    }
     
     console.log('Application initialization complete');
 });
@@ -402,48 +442,52 @@ function showAdminPanel() {
     console.log('showAdminPanel called - checking DOM elements');
     
     // Check that the necessary elements exist
-    if (!loginFormContainer) {
-        console.error('loginFormContainer is not defined');
-    }
-    if (!adminPanel) {
-        console.error('adminPanel is not defined');
-    }
-    if (!adminToolbar) {
-        console.error('adminToolbar is not defined');
-    }
-    if (!publicView) {
-        console.error('publicView is not defined');
-    }
+    const loginFormContainer = document.getElementById('login-form-container');
+    const adminPanel = document.getElementById('admin-panel');
+    const adminToolbar = document.getElementById('admin-toolbar');
+    const publicView = document.getElementById('public-view');
+    const content = document.getElementById('content');
     
-    // Clear existing content
+    // Log which elements were found or missing
+    console.log('Elements found:', {
+        loginFormContainer: !!loginFormContainer,
+        adminPanel: !!adminPanel,
+        adminToolbar: !!adminToolbar,
+        publicView: !!publicView,
+        content: !!content
+    });
+    
+    // Clear existing content and hide other views
     if (loginFormContainer) loginFormContainer.style.display = 'none';
     if (publicView) publicView.style.display = 'none';
     
+    // Show admin panel and toolbar
+    if (adminToolbar) adminToolbar.style.display = 'flex';
+    if (adminPanel) {
+        adminPanel.style.display = 'block';
+        console.log('Admin panel now visible');
+    } else {
+        console.error('Admin panel element not found - cannot display admin interface');
+        showAlert('UI Error: Admin panel not found. Please refresh the page.', 'danger');
+        return;
+    }
+    
     // Clear any existing dashboard content
-    const content = document.getElementById('content');
     if (content) {
         content.innerHTML = '';
     } else {
-        console.error('content element not found');
+        console.error('Content element not found - cannot clear content');
     }
-    
-    // Show admin panel and toolbar
-    if (adminToolbar) adminToolbar.style.display = 'flex';
-    if (adminPanel) adminPanel.style.display = 'block';
     
     console.log('Admin panel display updated');
     
     // Load pages without automatically loading dashboard
-    loadPages();
-    
-    // Get current page from localStorage or default to first page
-    const storedPage = localStorage.getItem('currentPage');
-    if (storedPage) {
-        navigateToPage(storedPage);
-    } else {
-        // If no stored page, we'll navigate to the first available page
-        // which will be handled after loadPages() completes
-    }
+    loadPages().then(pages => {
+        console.log(`Loaded ${pages?.length || 0} pages for admin panel`);
+    }).catch(err => {
+        console.error('Error loading pages:', err);
+        showAlert('Failed to load pages. Please try again.', 'danger');
+    });
 }
 
 function showPublicView() {
