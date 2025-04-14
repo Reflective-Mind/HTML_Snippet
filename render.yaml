@@ -2,7 +2,9 @@ services:
   - type: web
     name: mbti-render
     env: node
-    buildCommand: npm install
+    buildCommand: |
+      npm install
+      npm run setup-static
     startCommand: node server.js
     envVars:
       - key: PORT
@@ -17,5 +19,9 @@ services:
         value: production
       - key: DB_NAME
         value: html-snippet-builder
+      - key: REACT_APP_API_URL
+        value: https://mbti-render.onrender.com
+      - key: REACT_APP_SOCKET_URL
+        value: https://mbti-render.onrender.com
     healthCheckPath: /api/health
     autoDeploy: true 

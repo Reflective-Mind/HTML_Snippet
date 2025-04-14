@@ -91,26 +91,34 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use('/api/login', limiter); // Apply stricter limits only to login
 app.use('/api/', apiLimiter); // Apply regular limits to other API routes
-app.use(express.static('public'));
-app.use(express.static('.'));  // Also serve files from root directory
 
-// Set up security middleware
+// Serve static files - order matters for file resolution
+app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'src')));
+app.use(express.static(__dirname));
+
+// Set up security middleware with more permissive CSP for development
 app.use(helmet({
     contentSecurityPolicy: {
         directives: {
-            defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://cdn.jsdelivr.net"],
-            styleSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"],
-            imgSrc: ["'self'", "data:", "https:", "blob:"],
-            connectSrc: ["'self'", "https://api.mistral.ai"],
-            fontSrc: ["'self'", "https://cdn.jsdelivr.net"],
-            objectSrc: ["'self'", "blob:"],
-            mediaSrc: ["'self'", "blob:"],
-            frameSrc: ["'self'"],
-            sandbox: ['allow-forms', 'allow-scripts', 'allow-same-origin', 'allow-downloads']
+            defaultSrc: ["'self'", "https:", "http:", "data:", "blob:"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https:", "http:", "blob:"],
+            styleSrc: ["'self'", "'unsafe-inline'", "https:", "http:"],
+            imgSrc: ["'self'", "data:", "https:", "http:", "blob:"],
+            connectSrc: ["'self'", "https:", "http:", "ws:", "wss:"],
+            fontSrc: ["'self'", "https:", "http:", "data:"],
+            objectSrc: ["'self'", "blob:", "data:"],
+            mediaSrc: ["'self'", "blob:", "data:", "https:", "http:"],
+            frameSrc: ["'self'", "https:", "http:"],
+            workerSrc: ["'self'", "blob:", "data:", "https:", "http:"],
+            childSrc: ["'self'", "blob:", "https:", "http:"],
+            formAction: ["'self'", "https:", "http:"],
+            upgradeInsecureRequests: []
         }
     },
-    crossOriginEmbedderPolicy: false // Allow loading resources in iframes
+    crossOriginEmbedderPolicy: false, // Allow loading resources in iframes
+    crossOriginOpenerPolicy: false, // Allow cross-origin popups
+    crossOriginResourcePolicy: false // Allow resources to be shared cross-origin
 }));
 
 // Setup mongoose for serverless environments
@@ -164,21 +172,40 @@ const authenticateAdmin = (req, res, next) => {
 
 // Add a simple home route that works even without MongoDB
 app.get('/home', (req, res) => {
-    res.sendFile('index.html', { root: './public' });
+    res.sendFile('index.html', { root: path.join(__dirname, 'public') });
 });
 
-// Add a root handler with explicit response
+// Add a root handler with better error handling
 app.get('/', (req, res) => {
-    console.log('Root path accessed, attempting to serve public/index.html');
+    console.log('Root path accessed, serving index.html');
     
-    // Try to send the file
+    // First try to send the optimized index-prod.html if it exists
+    const indexProdPath = path.join(__dirname, 'public', 'index-prod.html');
+    
+    if (fs.existsSync(indexProdPath)) {
+        console.log('Found index-prod.html, serving it');
+        return res.sendFile(indexProdPath);
+    }
+    
+    // Fall back to regular index.html
     try {
-        res.sendFile('index.html', { root: path.join(__dirname, 'public') });
-        console.log('Successfully served public/index.html');
+        const indexPath = path.join(__dirname, 'public', 'index.html');
+        res.sendFile(indexPath);
+        console.log('Successfully served index.html');
     } catch (error) {
         console.error('Error serving index.html:', error);
         
-        // Fallback response if file can't be served
+        // Fallback to the static HTML response
+        try {
+            const fallbackPath = path.join(__dirname, 'public', 'fallback.html');
+            if (fs.existsSync(fallbackPath)) {
+                return res.sendFile(fallbackPath);
+            }
+        } catch (fallbackError) {
+            console.error('Error serving fallback.html:', fallbackError);
+        }
+        
+        // Last resort fallback
         res.send(`
             <!DOCTYPE html>
             <html>
@@ -200,7 +227,9 @@ app.get('/', (req, res) => {
                         <li><strong>Email:</strong> eideken@hotmail.com</li>
                         <li><strong>Password:</strong> sword91</li>
                     </ul>
-                    <a href="/app" class="btn">Access Application</a>
+                    <p>
+                        <a href="/app" class="btn">Launch Application</a>
+                    </p>
                 </div>
             </body>
             </html>
@@ -208,30 +237,51 @@ app.get('/', (req, res) => {
     }
 });
 
-// Add a dedicated app route
+// Improved app route handler
 app.get('/app', (req, res) => {
-    try {
-        console.log('App route accessed, serving app-complete.html');
-        const filePath = path.join(__dirname, 'public', 'app-complete.html');
-        
-        // Check if file exists first
-        if (fs.existsSync(filePath)) {
-            res.sendFile(filePath, err => {
-                if (err) {
-                    console.error('Error serving app-complete.html:', err);
-                    res.status(500).send('Error loading application');
-                } else {
-                    console.log('Successfully served app-complete.html');
-                }
-            });
-        } else {
-            console.error('app-complete.html file not found at path:', filePath);
-            res.status(404).send('Application file not found');
+    console.log('App route accessed, serving app-complete.html');
+    
+    const filePath = path.join(__dirname, 'public', 'app-complete.html');
+    
+    if (fs.existsSync(filePath)) {
+        try {
+            res.sendFile(filePath);
+            console.log('Successfully served app-complete.html');
+        } catch (err) {
+            console.error('Error serving app-complete.html:', err);
+            res.redirect('/');
         }
-    } catch (error) {
-        console.error('Error in /app route:', error);
-        res.status(500).send('Error loading application');
+    } else {
+        console.error('app-complete.html file not found at path:', filePath);
+        res.redirect('/');
     }
+});
+
+// Handle all other routes for SPA navigation
+app.get('*', (req, res, next) => {
+    // Skip API routes and static file requests
+    if (req.path.startsWith('/api/') || 
+        req.path.includes('.') || 
+        req.path === '/socket.io/') {
+        return next();
+    }
+    
+    console.log(`Serving SPA for route: ${req.path}`);
+    
+    // Try to serve the app-complete.html first
+    const appPath = path.join(__dirname, 'public', 'app-complete.html');
+    if (fs.existsSync(appPath)) {
+        return res.sendFile(appPath);
+    }
+    
+    // Fall back to index.html
+    const indexPath = path.join(__dirname, 'public', 'index.html');
+    if (fs.existsSync(indexPath)) {
+        return res.sendFile(indexPath);
+    }
+    
+    // Last resort fallback to root
+    res.redirect('/');
 });
 
 // MongoDB connection with better error handling and monitoring
@@ -2164,12 +2214,6 @@ app.get('/api/admin', authenticateAdmin, async (req, res) => {
         console.error('Error fetching admin dashboard:', error);
         res.status(500).json({ message: 'Failed to load admin dashboard', error: error.message });
     }
-});
-
-// Make sure this is at the end of all your route definitions, just before starting the server
-app.get('*', (req, res) => {
-    console.log('Fallback route hit:', req.url);
-    res.sendFile('index.html', { root: './public' });
 });
 
 // Health check endpoint
