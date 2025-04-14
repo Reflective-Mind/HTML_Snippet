@@ -202,51 +202,118 @@ const App = () => {
 
     // Snippet management handlers with optimistic updates
     const handleSnippetAdd = async (snippet) => {
-        const updatedPage = pages.find(p => p.id === currentPage);
-        const newSnippet = {
-            id: Date.now(),
-            ...snippet,
-            position: { x: 0, y: 0 }
-        };
-
         try {
-            // Optimistic update
+            // Find current page
+            const updatedPage = pages.find(p => p.id === currentPage);
+            if (!updatedPage) {
+                throw new Error('Current page not found');
+            }
+
+            // Create a new snippet with a unique ID
+            const newSnippet = {
+                id: `snippet_${Date.now()}`, // More readable ID
+                html: snippet.html,
+                position: { x: 20, y: 20 }, // Start at a visible position
+                size: snippet.size || { width: 300, height: 200 }
+            };
+
+            console.log('Adding new snippet:', newSnippet);
+
+            // Optimistic update (update UI immediately)
             setPages(prev => prev.map(p => p.id === currentPage ? {
                 ...p,
                 snippets: [...p.snippets, newSnippet]
             } : p));
 
+            // Server update
             await axios.put(`/api/pages/${currentPage}`, {
                 ...updatedPage,
                 snippets: [...updatedPage.snippets, newSnippet]
             });
+            
+            console.log('Snippet added successfully');
         } catch (err) {
-            setError('Failed to add snippet');
-            // Rollback
-            setPages(prev => prev.map(p => p.id === currentPage ? updatedPage : p));
+            console.error('Failed to add snippet:', err);
+            setError(`Failed to add snippet: ${err.message}`);
+            
+            // Rollback to original state
+            loadPages();
         }
     };
 
     const handleSnippetUpdate = async (snippetId, updates) => {
-        const updatedPage = pages.find(p => p.id === currentPage);
-        const originalSnippets = [...updatedPage.snippets];
+        const currentPageObj = pages.find(p => p.id === currentPage);
+        if (!currentPageObj) {
+            setError('Page not found');
+            return;
+        }
+        
+        const originalSnippets = [...currentPageObj.snippets];
+        
+        // Handle snippet deletion
+        if (updates.delete) {
+            try {
+                // Optimistic update - remove the snippet
+                setPages(prev => prev.map(p => p.id === currentPage ? {
+                    ...p,
+                    snippets: p.snippets.filter(s => s.id !== snippetId)
+                } : p));
+                
+                // Save to backend
+                const updatedSnippets = currentPageObj.snippets.filter(s => s.id !== snippetId);
+                await axios.put(`/api/pages/${currentPage}`, {
+                    ...currentPageObj,
+                    snippets: updatedSnippets
+                });
+                
+                console.log(`Snippet ${snippetId} deleted successfully`);
+                return;
+            } catch (err) {
+                console.error('Failed to delete snippet:', err);
+                setError('Failed to delete snippet');
+                // Rollback
+                setPages(prev => prev.map(p => p.id === currentPage ? {
+                    ...p, 
+                    snippets: originalSnippets
+                } : p));
+                return;
+            }
+        }
 
         try {
-            // Optimistic update
+            // Find the snippet to update
+            const snippetToUpdate = currentPageObj.snippets.find(s => s.id === snippetId);
+            if (!snippetToUpdate) {
+                throw new Error(`Snippet with ID ${snippetId} not found`);
+            }
+            
+            // Create updated snippet
+            const updatedSnippet = { ...snippetToUpdate, ...updates };
+            
+            // Log the change
+            console.log(`Updating snippet ${snippetId}:`, updates);
+            
+            // Optimistic update in the UI
             setPages(prev => prev.map(p => p.id === currentPage ? {
                 ...p,
-                snippets: p.snippets.map(s => s.id === snippetId ? { ...s, ...updates } : s)
+                snippets: p.snippets.map(s => s.id === snippetId ? updatedSnippet : s)
             } : p));
 
+            // Save to backend
+            const updatedSnippets = currentPageObj.snippets.map(s => 
+                s.id === snippetId ? updatedSnippet : s
+            );
+            
             await axios.put(`/api/pages/${currentPage}`, {
-                ...updatedPage,
-                snippets: updatedPage.snippets.map(s => s.id === snippetId ? { ...s, ...updates } : s)
+                ...currentPageObj,
+                snippets: updatedSnippets
             });
         } catch (err) {
+            console.error('Failed to update snippet:', err);
             setError('Failed to update snippet');
             // Rollback
             setPages(prev => prev.map(p => p.id === currentPage ? {
-                ...p,
+                ...p, 
                 snippets: originalSnippets
             } : p));
         }
@@ -255,6 +322,48 @@ const App = () => {
     // Get current page snippets
     const currentSnippets = pages.find(page => page.id === currentPage)?.snippets || [];
     
+    // Navigation listener for snippet-initiated page changes
+    useEffect(() => {
+        const handleNavigation = (e) => {
+            const pageId = e.detail?.pageId;
+            if (pageId && pages.some(p => p.id === pageId)) {
+                console.log(`Navigation event received, changing to page: ${pageId}`);
+                setCurrentPage(pageId);
+            }
+        };
+        
+        window.addEventListener('navigationRequested', handleNavigation);
+        
+        return () => {
+            window.removeEventListener('navigationRequested', handleNavigation);
+        };
+    }, [pages]);
+
+    // Set window variables for navigation from snippets
+    useEffect(() => {
+        // Make these functions available to snippets
+        window.getAvailablePages = () => {
+            return pages.map(p => ({ id: p.id, name: p.name }));
+        };
+        
+        window.navigateToPage = (pageId) => {
+            if (pageId && pages.some(p => p.id === pageId)) {
+                localStorage.setItem('currentPage', pageId);
+                setCurrentPage(pageId);
+            }
+        };
+        
+        // Set preview mode status
+        window.isPreviewMode = showPreview || isUser;
+        
+        return () => {
+            // Clean up window variables when component unmounts
+            delete window.getAvailablePages;
+            delete window.navigateToPage;
+            delete window.isPreviewMode;
+        };
+    }, [pages, showPreview, isUser]);
+
     return (
         <div className="app-container">
             {error && (
@@ -340,6 +449,7 @@ const App = () => {
 
                     <div
                         className={`page-content ${showPreview ? 'preview-mode' : ''}`}
+                        id="admin-content-container"
                     >
                         {currentSnippets.length === 0 && !showPreview && (
                             <div className="empty-page-message text-center text-muted p-5">
@@ -357,6 +467,22 @@ const App = () => {
                             />
                         ))}
                     </div>
+                    
+                    {/* Add window functions for snippets to use in preview mode */}
+                    {showPreview && (
+                        <script dangerouslySetInnerHTML={{ __html: `
+                            window.isPreviewMode = true;
+                            window.getAvailablePages = function() {
+                                return ${JSON.stringify(pages.map(p => ({ id: p.id, name: p.name })))};
+                            };
+                            window.navigateToPage = function(pageId) {
+                                if (pageId) {
+                                    window.localStorage.setItem('currentPage', pageId);
+                                    window.dispatchEvent(new CustomEvent('navigationRequested', { detail: { pageId: pageId } }));
+                                }
+                            };
+                        `}}></script>
+                    )}
                 </div>
             ) : (
                 // User view (non-admin)
@@ -386,7 +512,7 @@ const App = () => {
                         isUserView={true}  // Flag for user view mode
                     />
 
-                    <div className="page-content preview-mode">
+                    <div className="page-content preview-mode" id="user-content-container">
                         {currentSnippets.length === 0 && (
                             <div className="empty-page-message text-center text-muted p-5">
                                 <h4>This page has no content yet</h4>
@@ -403,6 +529,20 @@ const App = () => {
                             />
                         ))}
                     </div>
+                    
+                    {/* Add window functions for snippets to use */}
+                    <script dangerouslySetInnerHTML={{ __html: `
+                        window.isPreviewMode = true;
+                        window.getAvailablePages = function() {
+                            return ${JSON.stringify(pages.map(p => ({ id: p.id, name: p.name })))};
+                        };
+                        window.navigateToPage = function(pageId) {
+                            if (pageId) {
+                                window.localStorage.setItem('currentPage', pageId);
+                                window.location.reload();
+                            }
+                        };
+                    `}}></script>
                 </div>
             )}
         </div>

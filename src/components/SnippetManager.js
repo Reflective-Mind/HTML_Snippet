@@ -180,19 +180,45 @@ const SnippetManager = ({ onAddSnippet, onError }) => {
     const [showCustomModal, setShowCustomModal] = useState(false);
 
     const handleTemplateSelect = (template) => {
-        setSelectedTemplate(template);
-        setShowTemplateModal(true);
+        try {
+            console.log(`Selecting template: ${template}`);
+            setSelectedTemplate(template);
+            
+            // For better UX, directly add the template without showing modal
+            if (template && SNIPPET_TEMPLATES[template]) {
+                const templateData = SNIPPET_TEMPLATES[template];
+                console.log(`Adding template directly: ${template} (${templateData.name})`);
+                
+                onAddSnippet({
+                    html: templateData.html,
+                    size: templateData.defaultSize
+                });
+            } else {
+                // If template is not found, show modal
+                setShowTemplateModal(true);
+                console.log(`Template selected for modal: ${template}`);
+            }
+        } catch (err) {
+            console.error('Error selecting template:', err);
+            onError(`Failed to select template: ${err.message}`);
+        }
     };
 
     const handleTemplateConfirm = () => {
         try {
+            console.log(`Adding template: ${selectedTemplate}`);
             const template = SNIPPET_TEMPLATES[selectedTemplate];
+            if (!template) {
+                throw new Error(`Template "${selectedTemplate}" not found`);
+            }
+            
             onAddSnippet({
                 html: template.html,
                 size: template.defaultSize
             });
             setShowTemplateModal(false);
         } catch (err) {
+            console.error('Error adding template snippet:', err);
             onError('Failed to add template snippet');
         }
     };
@@ -202,13 +228,21 @@ const SnippetManager = ({ onAddSnippet, onError }) => {
             if (!customCode.trim()) {
                 throw new Error('Snippet code cannot be empty');
             }
+            // Ensure custom snippet has basic structure
+            let formattedCode = customCode;
+            if (!customCode.includes('<div') && !customCode.includes('<section')) {
+                formattedCode = `<div class="custom-snippet">${customCode}</div>`;
+            }
+            
+            console.log('Adding custom snippet');
             onAddSnippet({
-                html: customCode,
+                html: formattedCode,
                 size: { width: 300, height: 200 }
             });
             setCustomCode('');
             setShowCustomModal(false);
         } catch (err) {
+            console.error('Error adding custom snippet:', err);
             onError(err.message);
         }
     };

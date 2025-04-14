@@ -10,52 +10,125 @@ const SnippetContainer = ({
     const [isResizing, setIsResizing] = useState(false);
     const [startPos, setStartPos] = useState({ x: 0, y: 0 });
     const [startSize, setStartSize] = useState({ width: 0, height: 0 });
+    const [position, setPosition] = useState(snippet.position || { x: 0, y: 0 });
+    const [size, setSize] = useState(snippet.size || { width: 300, height: 200 });
+    const [contentRendered, setContentRendered] = useState(false);
     const containerRef = useRef(null);
+    const contentRef = useRef(null);
     const gridSize = 20; // Grid size for snapping
+    const debounceTimer = useRef(null);
 
     // Ensure snippet has proper position and size
     useEffect(() => {
         if (!snippet.position) {
             console.log('No position found for snippet, using default');
-            snippet.position = { x: 0, y: 0 };
+            setPosition({ x: 0, y: 0 });
+        } else {
+            setPosition(snippet.position);
         }
+        
         if (!snippet.size) {
             console.log('No size found for snippet, using default');
-            snippet.size = { width: 300, height: 200 };
+            setSize({ width: 300, height: 200 });
+        } else {
+            setSize(snippet.size);
         }
-    }, [snippet]);
+    }, [snippet.id]); // Only update when snippet ID changes to avoid loops
 
-    // Log container dimensions for debugging
+    // Initialize script content in the snippet after render
     useEffect(() => {
-        if (containerRef.current) {
-            const rect = containerRef.current.getBoundingClientRect();
-            console.log(`Snippet ${snippet.id} dimensions:`, {
-                position: snippet.position,
-                size: snippet.size,
-                actualDimensions: {
-                    width: rect.width,
-                    height: rect.height,
-                    top: rect.top,
-                    left: rect.left
+        if (contentRef.current && !contentRendered) {
+            try {
+                // Initialize window functions if needed
+                if (showPreview) {
+                    window.isPreviewMode = true;
+                    
+                    if (!window.getAvailablePages) {
+                        window.getAvailablePages = function() {
+                            // This will be populated properly in App.js
+                            return [];
+                        };
+                    }
+                    
+                    if (!window.navigateToPage) {
+                        window.navigateToPage = function(pageId) {
+                            console.log('Navigate to page:', pageId);
+                            // The actual implementation is in App.js
+                        };
+                    }
                 }
-            });
+                
+                // Execute scripts from HTML content
+                const scripts = contentRef.current.getElementsByTagName('script');
+                for (let i = 0; i < scripts.length; i++) {
+                    const script = scripts[i];
+                    const newScript = document.createElement('script');
+                    
+                    // Copy all attributes
+                    Array.from(script.attributes).forEach(attr => {
+                        newScript.setAttribute(attr.name, attr.value);
+                    });
+                    
+                    // Copy script content
+                    newScript.innerHTML = script.innerHTML;
+                    
+                    // Replace the original script with the new one
+                    script.parentNode.replaceChild(newScript, script);
+                }
+                
+                setContentRendered(true);
+            } catch (err) {
+                console.error('Error initializing snippet content:', err);
+                if (onError) onError('Failed to initialize snippet content');
+            }
         }
-    }, [snippet.id, snippet.position, snippet.size]);
+    }, [snippet.html, showPreview, contentRendered, onError]);
 
+    // Update local state when snippet prop changes
     useEffect(() => {
-        // Add event listeners for drag and resize
+        if (snippet.position && !isDragging) {
+            setPosition(snippet.position);
+        }
+        if (snippet.size && !isResizing) {
+            setSize(snippet.size);
+        }
+    }, [snippet.position, snippet.size, isDragging, isResizing]);
+
+    // Add event listeners for drag and resize
+    useEffect(() => {
         if (!showPreview && onUpdate) {
             document.addEventListener('mousemove', handleMouseMove);
             document.addEventListener('mouseup', handleMouseUp);
+            document.addEventListener('touchmove', handleTouchMove, { passive: false });
+            document.addEventListener('touchend', handleTouchEnd);
         }
 
         return () => {
             document.removeEventListener('mousemove', handleMouseMove);
             document.removeEventListener('mouseup', handleMouseUp);
+            document.removeEventListener('touchmove', handleTouchMove);
+            document.removeEventListener('touchend', handleTouchEnd);
+            // Clear any pending debounce
+            if (debounceTimer.current) {
+                clearTimeout(debounceTimer.current);
+            }
         };
-    }, [isDragging, isResizing, showPreview, onUpdate]);
+    }, [isDragging, isResizing, showPreview, onUpdate, position, size]);
 
     const snapToGrid = (value) => Math.round(value / gridSize) * gridSize;
+
+    // Debounced update to reduce server calls
+    const debouncedUpdate = (updates) => {
+        if (debounceTimer.current) {
+            clearTimeout(debounceTimer.current);
+        }
+        
+        debounceTimer.current = setTimeout(() => {
+            if (onUpdate) {
+                onUpdate(snippet.id, updates);
+            }
+        }, 100); // 100ms debounce time
+    };
 
     const handleMouseDown = (e, action) => {
         if (showPreview || !onUpdate) return;
@@ -83,6 +156,34 @@ const SnippetContainer = ({
         }
     };
 
+    const handleTouchStart = (e, action) => {
+        if (showPreview || !onUpdate) return;
+        
+        e.preventDefault();
+        e.stopPropagation();
+        
+        const touch = e.touches[0];
+        const rect = containerRef.current.getBoundingClientRect();
+        
+        if (action === 'drag') {
+            setIsDragging(true);
+            setStartPos({
+                x: touch.clientX - rect.left,
+                y: touch.clientY - rect.top
+            });
+        } else if (action === 'resize') {
+            setIsResizing(true);
+            setStartPos({
+                x: touch.clientX,
+                y: touch.clientY
+            });
+            setStartSize({
+                width: rect.width,
+                height: rect.height
+            });
+        }
+    };
+
     const handleMouseMove = (e) => {
         if ((!isDragging && !isResizing) || !onUpdate) return;
 
@@ -97,14 +198,18 @@ const SnippetContainer = ({
                 const newY = snapToGrid(e.clientY - parentRect.top - startPos.y);
 
                 // Ensure the snippet stays within the parent container
-                const maxX = parentRect.width - container.offsetWidth - 10; // 10px buffer
-                const maxY = parentRect.height - container.offsetHeight - 10; // 10px buffer
-
-                onUpdate(snippet.id, {
-                    position: {
-                        x: Math.max(0, Math.min(newX, maxX)),
-                        y: Math.max(0, Math.min(newY, maxY))
-                    }
+                const maxX = parentRect.width - container.offsetWidth;
+                const maxY = parentRect.height - container.offsetHeight;
+                
+                const safeX = Math.max(0, Math.min(newX, maxX));
+                const safeY = Math.max(0, Math.min(newY, maxY));
+                
+                // Update local state immediately for smooth UI
+                setPosition({ x: safeX, y: safeY });
+                
+                // Debounced update to backend
+                debouncedUpdate({
+                    position: { x: safeX, y: safeY }
                 });
             }
 
@@ -115,15 +220,19 @@ const SnippetContainer = ({
                 const newWidth = snapToGrid(Math.max(100, startSize.width + deltaWidth));
                 const newHeight = snapToGrid(Math.max(100, startSize.height + deltaHeight));
 
-                // Ensure the snippet stays within the parent container
-                const maxWidth = Math.max(300, parentRect.width - snippet.position.x - 40); // 40px buffer
-                const maxHeight = Math.max(200, parentRect.height - snippet.position.y - 40); // 40px buffer
-
-                onUpdate(snippet.id, {
-                    size: {
-                        width: Math.min(newWidth, maxWidth),
-                        height: Math.min(newHeight, maxHeight)
-                    }
+                // Ensure the snippet stays within reasonable bounds
+                const maxWidth = Math.min(1200, parentRect.width - position.x);
+                const maxHeight = Math.min(800, parentRect.height - position.y);
+                
+                const safeWidth = Math.min(newWidth, maxWidth);
+                const safeHeight = Math.min(newHeight, maxHeight);
+                
+                // Update local state immediately for smooth UI
+                setSize({ width: safeWidth, height: safeHeight });
+                
+                // Debounced update to backend
+                debouncedUpdate({
+                    size: { width: safeWidth, height: safeHeight }
                 });
             }
         } catch (err) {
@@ -134,14 +243,120 @@ const SnippetContainer = ({
         }
     };
 
+    const handleTouchMove = (e) => {
+        if ((!isDragging && !isResizing) || !onUpdate) return;
+        
+        e.preventDefault(); // Prevent scrolling while dragging
+        
+        try {
+            const touch = e.touches[0];
+            const container = containerRef.current;
+            if (!container) return;
+            
+            const parentRect = container.parentElement.getBoundingClientRect();
+
+            if (isDragging) {
+                const newX = snapToGrid(touch.clientX - parentRect.left - startPos.x);
+                const newY = snapToGrid(touch.clientY - parentRect.top - startPos.y);
+
+                // Ensure the snippet stays within the parent container
+                const maxX = parentRect.width - container.offsetWidth;
+                const maxY = parentRect.height - container.offsetHeight;
+                
+                const safeX = Math.max(0, Math.min(newX, maxX));
+                const safeY = Math.max(0, Math.min(newY, maxY));
+                
+                // Update local state immediately for smooth UI
+                setPosition({ x: safeX, y: safeY });
+            }
+
+            if (isResizing) {
+                const deltaWidth = touch.clientX - startPos.x;
+                const deltaHeight = touch.clientY - startPos.y;
+
+                const newWidth = snapToGrid(Math.max(100, startSize.width + deltaWidth));
+                const newHeight = snapToGrid(Math.max(100, startSize.height + deltaHeight));
+
+                // Ensure the snippet stays within reasonable bounds
+                const maxWidth = Math.min(1200, parentRect.width - position.x);
+                const maxHeight = Math.min(800, parentRect.height - position.y);
+                
+                const safeWidth = Math.min(newWidth, maxWidth);
+                const safeHeight = Math.min(newHeight, maxHeight);
+                
+                // Update local state immediately for smooth UI
+                setSize({ width: safeWidth, height: safeHeight });
+            }
+        } catch (err) {
+            console.error('Error updating snippet on touch:', err);
+            if (onError) onError('Failed to update snippet position/size');
+            setIsDragging(false);
+            setIsResizing(false);
+        }
+    };
+
     const handleMouseUp = () => {
+        if (!isDragging && !isResizing) return;
+        
+        // Perform final update when releasing mouse
+        if (isDragging && onUpdate) {
+            console.log('Final position update:', position);
+            onUpdate(snippet.id, { position });
+        }
+        
+        if (isResizing && onUpdate) {
+            console.log('Final size update:', size);
+            onUpdate(snippet.id, { size });
+        }
+        
         setIsDragging(false);
         setIsResizing(false);
     };
 
-    // Ensure snippet has valid position and size
-    const safePosition = snippet.position || { x: 0, y: 0 };
-    const safeSize = snippet.size || { width: 300, height: 200 };
+    const handleTouchEnd = () => {
+        if (!isDragging && !isResizing) return;
+        
+        // Perform final update when touch ends
+        if (isDragging && onUpdate) {
+            console.log('Final position update (touch):', position);
+            onUpdate(snippet.id, { position });
+        }
+        
+        if (isResizing && onUpdate) {
+            console.log('Final size update (touch):', size);
+            onUpdate(snippet.id, { size });
+        }
+        
+        setIsDragging(false);
+        setIsResizing(false);
+    };
+
+    // Function to safely execute HTML with scripts
+    const executeHtml = (htmlContent) => {
+        // Create a temporary div to parse the HTML
+        const div = document.createElement('div');
+        div.innerHTML = htmlContent;
+        
+        // Execute all scripts
+        const scripts = div.getElementsByTagName('script');
+        for (let i = 0; i < scripts.length; i++) {
+            const script = scripts[i];
+            const newScript = document.createElement('script');
+            
+            // Copy attributes
+            Array.from(script.attributes).forEach(attr => {
+                newScript.setAttribute(attr.name, attr.value);
+            });
+            
+            // Copy content
+            newScript.innerHTML = script.innerHTML;
+            
+            // Flag as executed
+            newScript.setAttribute('data-executed', 'true');
+        }
+        
+        return div.innerHTML;
+    };
 
     return (
         <div
@@ -149,23 +364,25 @@ const SnippetContainer = ({
             className={`snippet-container ${isDragging ? 'dragging' : ''} ${showPreview ? 'preview-mode' : ''}`}
             style={{
                 position: 'absolute',
-                left: safePosition.x,
-                top: safePosition.y,
-                width: safeSize.width,
-                height: safeSize.height,
+                left: position.x,
+                top: position.y,
+                width: size.width,
+                height: size.height,
                 border: showPreview ? 'none' : '1px solid #ccc',
                 background: 'white',
                 padding: '10px',
                 boxShadow: isDragging ? '0 5px 15px rgba(0,0,0,0.3)' : '0 2px 5px rgba(0,0,0,0.1)',
                 borderRadius: '4px',
                 cursor: (!showPreview && onUpdate) ? (isDragging ? 'grabbing' : 'grab') : 'default',
-                transition: 'box-shadow 0.3s ease',
+                transition: isDragging ? 'none' : 'box-shadow 0.3s ease',
                 userSelect: 'none',
                 zIndex: isDragging ? 100 : 10 // Increase z-index when dragging
             }}
             onMouseDown={(!showPreview && onUpdate) ? (e) => handleMouseDown(e, 'drag') : undefined}
+            onTouchStart={(!showPreview && onUpdate) ? (e) => handleTouchStart(e, 'drag') : undefined}
         >
             <div 
+                ref={contentRef}
                 className="snippet-content"
                 style={{
                     width: '100%',
@@ -207,6 +424,25 @@ const SnippetContainer = ({
                         >
                             Edit
                         </button>
+                        <button
+                            className="delete-button"
+                            style={{
+                                background: '#dc3545',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '3px',
+                                padding: '3px 8px',
+                                fontSize: '12px',
+                                cursor: 'pointer'
+                            }}
+                            onClick={() => {
+                                if (window.confirm('Delete this snippet?')) {
+                                    onUpdate(snippet.id, { delete: true });
+                                }
+                            }}
+                        >
+                            Delete
+                        </button>
                     </div>
                     <div 
                         className="resize-handle"
@@ -223,6 +459,7 @@ const SnippetContainer = ({
                             zIndex: 101
                         }}
                         onMouseDown={(e) => handleMouseDown(e, 'resize')}
+                        onTouchStart={(e) => handleTouchStart(e, 'resize')}
                     />
                     <div className="snippet-info" style={{
                         position: 'absolute',
@@ -232,7 +469,7 @@ const SnippetContainer = ({
                         color: '#999',
                         whiteSpace: 'nowrap'
                     }}>
-                        {`Position: ${safePosition.x},${safePosition.y} | Size: ${safeSize.width}x${safeSize.height}`}
+                        {`Position: ${position.x},${position.y} | Size: ${size.width}x${size.height}`}
                     </div>
                 </>
             )}
