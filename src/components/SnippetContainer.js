@@ -118,26 +118,46 @@ const SnippetContainer = ({
         }
     }, [snippet.position, snippet.size, isDragging, isResizing]);
 
-    // Add event listeners for drag and resize
+    // Add global mouse and touch event listeners
     useEffect(() => {
-        if (!showPreview && onUpdate) {
-            document.addEventListener('mousemove', handleMouseMove);
-            document.addEventListener('mouseup', handleMouseUp);
-            document.addEventListener('touchmove', handleTouchMove, { passive: false });
-            document.addEventListener('touchend', handleTouchEnd);
+        // Define event handler references to use for both adding and removing
+        const mouseMoveHandler = (e) => handleMouseMove(e);
+        const mouseUpHandler = (e) => handleMouseUp(e);
+        const touchMoveHandler = (e) => handleTouchMove(e);
+        const touchEndHandler = (e) => handleTouchEnd(e);
+        
+        if (isDragging || isResizing) {
+            // Add event listeners to document level to capture events outside component
+            document.addEventListener('mousemove', mouseMoveHandler);
+            document.addEventListener('mouseup', mouseUpHandler);
+            document.addEventListener('touchmove', touchMoveHandler, { passive: false });
+            document.addEventListener('touchend', touchEndHandler);
+            
+            // Log that we've attached handlers
+            console.log(`Event handlers attached for snippet ${snippet.id}`);
         }
-
+        
+        // Make sure to clean up handlers properly
         return () => {
-            document.removeEventListener('mousemove', handleMouseMove);
-            document.removeEventListener('mouseup', handleMouseUp);
-            document.removeEventListener('touchmove', handleTouchMove);
-            document.removeEventListener('touchend', handleTouchEnd);
+            // Clean up event listeners when component unmounts or state changes
+            document.removeEventListener('mousemove', mouseMoveHandler);
+            document.removeEventListener('mouseup', mouseUpHandler);
+            document.removeEventListener('touchmove', touchMoveHandler);
+            document.removeEventListener('touchend', touchEndHandler);
+            
             // Clear any pending debounce
             if (debounceTimer.current) {
                 clearTimeout(debounceTimer.current);
+                debounceTimer.current = null;
+            }
+            
+            // Also make sure to clean up if the component unmounts while dragging
+            if (isDragging || isResizing) {
+                document.body.classList.remove('snippet-dragging');
+                console.log(`Event handlers cleaned up for snippet ${snippet.id}`);
             }
         };
-    }, [isDragging, isResizing, showPreview, onUpdate, position, size]);
+    }, [isDragging, isResizing, snippet.id]);
 
     const snapToGrid = (value) => Math.round(value / gridSize) * gridSize;
 
@@ -159,16 +179,28 @@ const SnippetContainer = ({
 
         e.preventDefault();
         e.stopPropagation();
+        
+        // Get dimensions directly from the DOM element
         const rect = containerRef.current.getBoundingClientRect();
+        
+        // Add dragging class to body to prevent text selection while dragging
+        document.body.classList.add('snippet-dragging');
 
         if (action === 'drag') {
+            // Set visual feedback immediately
             setIsDragging(true);
+            containerRef.current.style.cursor = 'grabbing';
+            containerRef.current.style.zIndex = '100';
+            
             setStartPos({
                 x: e.clientX - rect.left,
                 y: e.clientY - rect.top
             });
         } else if (action === 'resize') {
+            // Set visual feedback immediately
             setIsResizing(true);
+            containerRef.current.style.zIndex = '100';
+            
             setStartPos({
                 x: e.clientX,
                 y: e.clientY
@@ -186,17 +218,26 @@ const SnippetContainer = ({
         e.preventDefault();
         e.stopPropagation();
         
+        // Add dragging class to body to prevent screen movement
+        document.body.classList.add('snippet-dragging');
+        
         const touch = e.touches[0];
         const rect = containerRef.current.getBoundingClientRect();
         
         if (action === 'drag') {
+            // Set visual feedback immediately
             setIsDragging(true);
+            containerRef.current.style.zIndex = '100';
+            
             setStartPos({
                 x: touch.clientX - rect.left,
                 y: touch.clientY - rect.top
             });
         } else if (action === 'resize') {
+            // Set visual feedback immediately
             setIsResizing(true);
+            containerRef.current.style.zIndex = '100';
+            
             setStartPos({
                 x: touch.clientX,
                 y: touch.clientY
@@ -322,37 +363,66 @@ const SnippetContainer = ({
     const handleMouseUp = () => {
         if (!isDragging && !isResizing) return;
         
-        // Perform final update when releasing mouse
-        if (isDragging && onUpdate) {
-            console.log('Final position update:', position);
-            onUpdate(snippet.id, { position });
+        try {
+            // Reset cursor and other styles
+            if (containerRef.current) {
+                containerRef.current.style.cursor = '';
+                containerRef.current.style.zIndex = '';
+            }
+            
+            // Remove dragging class from body
+            document.body.classList.remove('snippet-dragging');
+            
+            // Perform final update when releasing mouse
+            if (isDragging && onUpdate) {
+                console.log('Final position update:', position);
+                onUpdate(snippet.id, { position });
+            }
+            
+            if (isResizing && onUpdate) {
+                console.log('Final size update:', size);
+                onUpdate(snippet.id, { size });
+            }
+        } catch (err) {
+            console.error('Error in mouse up handler:', err);
+            if (onError) onError('Failed to update final position/size');
+        } finally {
+            // Always reset dragging/resizing state even if error occurs
+            setIsDragging(false);
+            setIsResizing(false);
         }
-        
-        if (isResizing && onUpdate) {
-            console.log('Final size update:', size);
-            onUpdate(snippet.id, { size });
-        }
-        
-        setIsDragging(false);
-        setIsResizing(false);
     };
 
     const handleTouchEnd = () => {
         if (!isDragging && !isResizing) return;
         
-        // Perform final update when touch ends
-        if (isDragging && onUpdate) {
-            console.log('Final position update (touch):', position);
-            onUpdate(snippet.id, { position });
+        try {
+            // Reset visual styles
+            if (containerRef.current) {
+                containerRef.current.style.zIndex = '';
+            }
+            
+            // Remove dragging class from body
+            document.body.classList.remove('snippet-dragging');
+            
+            // Update backend when touch ends
+            if (isDragging && onUpdate) {
+                console.log('Final position update (touch):', position);
+                onUpdate(snippet.id, { position });
+            }
+            
+            if (isResizing && onUpdate) {
+                console.log('Final size update (touch):', size);
+                onUpdate(snippet.id, { size });
+            }
+        } catch (err) {
+            console.error('Error in touch end handler:', err);
+            if (onError) onError('Failed to update final position/size');
+        } finally {
+            // Always reset state even if error occurs
+            setIsDragging(false);
+            setIsResizing(false);
         }
-        
-        if (isResizing && onUpdate) {
-            console.log('Final size update (touch):', size);
-            onUpdate(snippet.id, { size });
-        }
-        
-        setIsDragging(false);
-        setIsResizing(false);
     };
 
     // Function to safely execute HTML with scripts
@@ -400,7 +470,8 @@ const SnippetContainer = ({
                 cursor: (!showPreview && onUpdate) ? (isDragging ? 'grabbing' : 'grab') : 'default',
                 transition: isDragging ? 'none' : 'box-shadow 0.3s ease',
                 userSelect: 'none',
-                zIndex: isDragging ? 100 : 10 // Increase z-index when dragging
+                touchAction: 'none', // Prevent browser handling of touch gestures
+                zIndex: isDragging || isResizing ? 100 : 10
             }}
             onMouseDown={(!showPreview && onUpdate) ? (e) => handleMouseDown(e, 'drag') : undefined}
             onTouchStart={(!showPreview && onUpdate) ? (e) => handleTouchStart(e, 'drag') : undefined}

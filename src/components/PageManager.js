@@ -13,6 +13,8 @@ const PageManager = ({
     const [showSettings, setShowSettings] = useState(false);
     const [editingPage, setEditingPage] = useState(null);
     const [defaultPage, setDefaultPage] = useState(localStorage.getItem('defaultPage') || 'home');
+    const [showAddPageModal, setShowAddPageModal] = useState(false);
+    const [newPageName, setNewPageName] = useState('');
 
     // Generate a valid, unique page ID from a name
     const generatePageId = (pageName) => {
@@ -40,22 +42,30 @@ const PageManager = ({
     const handlePageAdd = () => {
         if (isUserView || !onPageAdd) return;
         
-        const pageName = prompt('Enter page name:');
-        if (!pageName?.trim()) return;
-        
+        // Show the add page modal instead of using prompt
+        setShowAddPageModal(true);
+        setNewPageName('');
+    };
+    
+    const submitNewPage = () => {
         try {
-            if (pageName.trim().length < 2) {
+            if (!newPageName?.trim()) {
+                throw new Error('Page name cannot be empty');
+            }
+            
+            if (newPageName.trim().length < 2) {
                 throw new Error('Page name must be at least 2 characters');
             }
             
-            const pageId = generatePageId(pageName);
+            const pageId = generatePageId(newPageName);
             
             if (!pageId) {
                 throw new Error('Invalid page name');
             }
             
-            console.log(`Creating new page: ${pageName} (${pageId})`);
-            onPageAdd({ id: pageId, name: pageName.trim(), snippets: [] });
+            console.log(`Creating new page: ${newPageName} (${pageId})`);
+            onPageAdd({ id: pageId, name: newPageName.trim(), snippets: [] });
+            setShowAddPageModal(false);
         } catch (err) {
             onError(err.message);
         }
@@ -166,10 +176,79 @@ const PageManager = ({
                 </div>
             </div>
 
+            {/* Add Page Modal */}
+            {!isUserView && showAddPageModal && (
+                <div className="modal show d-block" onClick={(e) => {
+                    // Close modal when clicking on backdrop
+                    if (e.target.className === 'modal show d-block') {
+                        setShowAddPageModal(false);
+                    }
+                }}>
+                    <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-content">
+                            <div className="modal-header">
+                                <h5 className="modal-title">Add New Page</h5>
+                                <button 
+                                    type="button" 
+                                    className="btn-close"
+                                    onClick={() => setShowAddPageModal(false)}
+                                    aria-label="Close"
+                                ></button>
+                            </div>
+                            <div className="modal-body">
+                                <div className="mb-3">
+                                    <label className="form-label">Page Name</label>
+                                    <input
+                                        type="text"
+                                        className="form-control"
+                                        value={newPageName}
+                                        onChange={(e) => setNewPageName(e.target.value)}
+                                        placeholder="Enter page name"
+                                        minLength="2"
+                                        maxLength="50"
+                                        onKeyPress={(e) => {
+                                            if (e.key === 'Enter' && newPageName.trim().length >= 2) {
+                                                submitNewPage();
+                                            }
+                                        }}
+                                    />
+                                    <small className="text-muted">
+                                        Page name must be at least 2 characters long.
+                                    </small>
+                                </div>
+                            </div>
+                            <div className="modal-footer">
+                                <button 
+                                    type="button" 
+                                    className="btn btn-secondary" 
+                                    onClick={() => setShowAddPageModal(false)}
+                                >
+                                    Cancel
+                                </button>
+                                <button 
+                                    type="button" 
+                                    className="btn btn-primary"
+                                    onClick={submitNewPage}
+                                    disabled={!newPageName.trim() || newPageName.trim().length < 2}
+                                >
+                                    Create Page
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Page Settings Modal - Only shown in admin mode */}
             {!isUserView && showSettings && (
-                <div className="modal show d-block">
-                    <div className="modal-dialog">
+                <div className="modal show d-block" onClick={(e) => {
+                    // Close modal when clicking on backdrop (outside modal content)
+                    if (e.target.className === 'modal show d-block') {
+                        setShowSettings(false);
+                        setEditingPage(null);
+                    }
+                }}>
+                    <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
                         <div className="modal-content">
                             <div className="modal-header">
                                 <h5 className="modal-title">
@@ -182,6 +261,7 @@ const PageManager = ({
                                         setShowSettings(false);
                                         setEditingPage(null);
                                     }}
+                                    aria-label="Close"
                                 ></button>
                             </div>
                             <div className="modal-body">
@@ -228,7 +308,8 @@ const PageManager = ({
                             </div>
                             <div className="modal-footer">
                                 <button 
-                                    className="btn btn-secondary"
+                                    type="button" 
+                                    className="btn btn-secondary" 
                                     onClick={() => {
                                         setShowSettings(false);
                                         setEditingPage(null);
@@ -238,9 +319,9 @@ const PageManager = ({
                                 </button>
                                 {editingPage && (
                                     <button 
+                                        type="button" 
                                         className="btn btn-primary"
                                         onClick={handlePageUpdate}
-                                        disabled={!editingPage.name.trim() || editingPage.name.trim().length < 2}
                                     >
                                         Save Changes
                                     </button>

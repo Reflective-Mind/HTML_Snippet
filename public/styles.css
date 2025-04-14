@@ -621,4 +621,66 @@ button.btn {
 .snippet-container {
     position: absolute !important;
     z-index: 10 !important;
+}
+
+/* Add CSS to prevent text selection during drag operations */
+body.snippet-dragging {
+    user-select: none !important;
+    -webkit-user-select: none !important;
+    -moz-user-select: none !important;
+    overflow: hidden;
+    cursor: grabbing;
+}
+
+body.snippet-dragging * {
+    cursor: grabbing !important;
+}
+
+/* Make sure modals appear above everything else */
+.modal.show {
+    z-index: 1050 !important;
+}
+
+/* Ensure resize handle is visible and positioned correctly */
+.resize-handle {
+    z-index: 10;
+    touch-action: none;
+}
+
+/* Modal improvements to ensure they're always accessible */
+.modal.show.d-block {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 9999 !important; /* Ensure it's above everything */
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    overflow: auto;
+}
+
+.modal-dialog {
+    margin: 1.75rem auto;
+    max-width: 95%;
+}
+
+.modal-content {
+    position: relative;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
+}
+
+.btn-close {
+    opacity: 0.8;
+}
+
+.btn-close:hover {
+    opacity: 1;
+}
+
+/* Make button labels more visible */
+.btn {
+    font-weight: 500;
 } 

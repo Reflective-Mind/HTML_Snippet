@@ -229,11 +229,16 @@ const SnippetManager = ({ onAddSnippet, onError }) => {
             
             console.log(`Adding template: ${template} (${templateData.name})`);
             
-            // Add the snippet directly without showing modal
-            onAddSnippet({
-                html: templateData.html,
-                size: templateData.defaultSize
-            });
+            // Add the snippet with try/catch to prevent token issues
+            try {
+                onAddSnippet({
+                    html: templateData.html,
+                    size: templateData.defaultSize
+                });
+            } catch (addError) {
+                console.error('Error in onAddSnippet:', addError);
+                onError(`Failed to add template: ${addError.message}`);
+            }
             
         } catch (err) {
             console.error('Error adding template:', err);
@@ -252,12 +257,17 @@ const SnippetManager = ({ onAddSnippet, onError }) => {
             const formattedCode = validateHtml(customCode.trim());
             
             console.log('Adding custom snippet');
-            onAddSnippet({
-                html: formattedCode,
-                size: { width: 300, height: 200 }
-            });
-            setCustomCode('');
-            setShowCustomModal(false);
+            try {
+                onAddSnippet({
+                    html: formattedCode,
+                    size: { width: 300, height: 200 }
+                });
+                setCustomCode('');
+                setShowCustomModal(false);
+            } catch (addError) {
+                console.error('Error in onAddSnippet:', addError);
+                onError(`Failed to add custom snippet: ${addError.message}`);
+            }
         } catch (err) {
             console.error('Error adding custom snippet:', err);
             onError(err.message);
@@ -289,8 +299,13 @@ const SnippetManager = ({ onAddSnippet, onError }) => {
 
             {/* Custom Code Modal */}
             {showCustomModal && (
-                <div className="modal show d-block">
-                    <div className="modal-dialog modal-lg">
+                <div className="modal show d-block" onClick={(e) => {
+                    // Close modal when clicking on backdrop
+                    if (e.target.className === 'modal show d-block') {
+                        setShowCustomModal(false);
+                    }
+                }}>
+                    <div className="modal-dialog modal-lg" onClick={(e) => e.stopPropagation()}>
                         <div className="modal-content">
                             <div className="modal-header">
                                 <h5 className="modal-title">Add Custom HTML</h5>
@@ -318,12 +333,14 @@ const SnippetManager = ({ onAddSnippet, onError }) => {
                             </div>
                             <div className="modal-footer">
                                 <button 
+                                    type="button"
                                     className="btn btn-secondary"
                                     onClick={() => setShowCustomModal(false)}
                                 >
                                     Cancel
                                 </button>
                                 <button 
+                                    type="button"
                                     className="btn btn-primary"
                                     onClick={handleCustomSnippet}
                                     disabled={!customCode.trim()}

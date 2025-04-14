@@ -1510,130 +1510,341 @@ async function saveSizeImmediately(snippetId, size) {
 
 // Updated setupDragAndResize function
 function setupDragAndResize() {
-    const snippets = document.querySelectorAll('.snippet');
-    const container = document.getElementById('content');
+    console.log('Setting up drag and resize functionality');
+    let activeSnippet = null;
+    let startX, startY;
+    let startLeft, startTop;
+    let startWidth, startHeight;
+    let action = null;
+    let isDragging = false;
+    let isResizing = false;
+    let updateTimeout;
+    let lastPositionUpdate = 0;
+    let lastSizeUpdate = 0;
+    const updateInterval = 250; // ms between updates during drag/resize
     
-    if (!container) {
-        console.error('Content container not found for drag and resize setup');
-        return;
-    }
-    
-    // Get container dimensions for relative positioning
-    const containerWidth = container.offsetWidth;
-    const containerHeight = container.offsetHeight;
-    
-    snippets.forEach(snippet => {
-        let isDragging = false;
-        let isResizing = false;
-        let startX, startY, startWidth, startHeight, initialX, initialY;
-        let currentPosition = { x: 0, y: 0 };
-        let currentSize = { width: 0, height: 0 };
-        let snippetId = 0;
-
-        const onMouseMove = (e) => {
-            if (isDragging) {
+    // Use delegation for better performance with many snippets
+    document.addEventListener('mousedown', (e) => {
+        // Don't trigger in preview mode or if we're clicking on a control button
+        if (isPreviewMode || e.target.closest('.snippet-controls')) return;
+        
+        // Check if we're clicking on a resize handle
+        const resizeHandle = e.target.closest('.resize-handle');
+        if (resizeHandle && !isPreviewMode) {
+            e.preventDefault();
+            activeSnippet = resizeHandle.closest('.snippet-container');
+            action = 'resize';
+            isResizing = true;
+            
+            // Store starting dimensions
+            startWidth = activeSnippet.offsetWidth;
+            startHeight = activeSnippet.offsetHeight;
+            startX = e.clientX;
+            startY = e.clientY;
+            
+            // Add a class to indicate resizing
+            activeSnippet.classList.add('resizing');
+            console.log('Resize started for snippet:', activeSnippet.id);
+            return;
+        }
+        
+        // Check if we're clicking on a snippet for dragging
+        const snippet = e.target.closest('.snippet-container');
+        if (snippet && !isPreviewMode) {
+            // If clicked on the content or handle area (not a button)
+            if (!e.target.closest('button')) {
                 e.preventDefault();
-                const dx = e.clientX - startX;
-                const dy = e.clientY - startY;
+                activeSnippet = snippet;
+                action = 'drag';
+                isDragging = true;
                 
-                // Calculate new position in pixels
-                const newX = Math.max(0, initialX + dx);
-                const newY = Math.max(0, initialY + dy);
+                // Get the current position
+                const style = window.getComputedStyle(activeSnippet);
+                startLeft = parseInt(style.left, 10);
+                startTop = parseInt(style.top, 10);
+                startX = e.clientX;
+                startY = e.clientY;
                 
-                // Keep position within container bounds
-                const maxX = containerWidth - snippet.offsetWidth;
-                const maxY = containerHeight - snippet.offsetHeight;
-                const boundedX = Math.min(maxX, Math.max(0, newX));
-                const boundedY = Math.min(maxY, Math.max(0, newY));
-                
-                // Apply the position
-                snippet.style.left = `${boundedX}px`;
-                snippet.style.top = `${boundedY}px`;
-                
-                // Store original pixel values for later conversion to percentages
-                snippet.dataset.originalX = boundedX;
-                snippet.dataset.originalY = boundedY;
-                
-                // Update current position
-                currentPosition = { x: boundedX, y: boundedY };
-                
-                // Debounce the position update
-                debouncedUpdatePosition(snippetId, currentPosition);
-            } else if (isResizing) {
-                e.preventDefault();
-                const width = startWidth + (e.clientX - startX);
-                const height = startHeight + (e.clientY - startY);
-                
-                // Set minimum sizes
-                if (width > 200 && height > 100) {
-                    // Keep size within reasonable bounds
-                    const maxWidth = containerWidth - parseFloat(snippet.style.left);
-                    const maxHeight = containerHeight - parseFloat(snippet.style.top);
-                    
-                    const boundedWidth = Math.min(maxWidth, width);
-                    const boundedHeight = Math.min(maxHeight, height);
-                    
-                    snippet.style.width = `${boundedWidth}px`;
-                    snippet.style.height = `${boundedHeight}px`;
-                    
-                    // Update current size
-                    currentSize = { width: boundedWidth, height: boundedHeight };
-                    
-                    // Debounce the size update
-                    debouncedUpdateSize(snippetId, currentSize);
+                // Add a class for styling during drag
+                activeSnippet.classList.add('dragging');
+                console.log('Drag started for snippet:', activeSnippet.id);
+            }
+        }
+    });
+    
+    const onMouseMove = (e) => {
+        // Only do something if we have an active snippet
+        if (!activeSnippet) return;
+        
+        if (action === 'drag' && isDragging) {
+            // Calculate new position
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+            
+            const newLeft = startLeft + dx;
+            const newTop = startTop + dy;
+            
+            // Apply new position with some bounds checking
+            activeSnippet.style.left = `${Math.max(0, newLeft)}px`;
+            activeSnippet.style.top = `${Math.max(0, newTop)}px`;
+            
+            // Throttle position updates to the server/localStorage
+            const now = Date.now();
+            if (now - lastPositionUpdate > updateInterval) {
+                // Get the snippetId from the data attribute
+                const snippetId = activeSnippet.getAttribute('data-snippet-id');
+                if (snippetId) {
+                    const position = { 
+                        left: Math.max(0, newLeft), 
+                        top: Math.max(0, newTop) 
+                    };
+                    debouncedUpdatePosition(snippetId, position);
+                    lastPositionUpdate = now;
                 }
             }
-        };
-
-        const onMouseUp = async () => {
-            if (isDragging) {
-                // Force an immediate position save on mouse up
-                await savePositionImmediately(snippetId, currentPosition);
+        } else if (action === 'resize' && isResizing) {
+            // Calculate new dimensions
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+            
+            // Apply new dimensions with minimum sizes to prevent too small snippets
+            const newWidth = Math.max(100, startWidth + dx);
+            const newHeight = Math.max(50, startHeight + dy);
+            
+            activeSnippet.style.width = `${newWidth}px`;
+            activeSnippet.style.height = `${newHeight}px`;
+            
+            // Throttle size updates to the server/localStorage
+            const now = Date.now();
+            if (now - lastSizeUpdate > updateInterval) {
+                // Get the snippetId from the data attribute
+                const snippetId = activeSnippet.getAttribute('data-snippet-id');
+                if (snippetId) {
+                    const size = { 
+                        width: newWidth, 
+                        height: newHeight 
+                    };
+                    debouncedUpdateSize(snippetId, size);
+                    lastSizeUpdate = now;
+                }
+            }
+        }
+    };
+    
+    const onMouseUp = async () => {
+        if (!activeSnippet) return;
+        
+        try {
+            // Final update of position or size
+            if (action === 'drag' && isDragging) {
+                const style = window.getComputedStyle(activeSnippet);
+                const left = parseInt(style.left, 10);
+                const top = parseInt(style.top, 10);
                 
-                // When in admin mode: update data attributes for future use
-                snippet.dataset.originalX = currentPosition.x;
-                snippet.dataset.originalY = currentPosition.y;
-            } else if (isResizing) {
-                // Force an immediate size save on mouse up
-                await saveSizeImmediately(snippetId, currentSize);
+                // Get the snippetId from the data attribute
+                const snippetId = activeSnippet.getAttribute('data-snippet-id');
+                if (snippetId) {
+                    await savePositionImmediately(snippetId, { left, top });
+                }
+                
+                activeSnippet.classList.remove('dragging');
+                isDragging = false;
+            } else if (action === 'resize' && isResizing) {
+                const width = activeSnippet.offsetWidth;
+                const height = activeSnippet.offsetHeight;
+                
+                // Get the snippetId from the data attribute
+                const snippetId = activeSnippet.getAttribute('data-snippet-id');
+                if (snippetId) {
+                    await saveSizeImmediately(snippetId, { width, height });
+                }
+                
+                activeSnippet.classList.remove('resizing');
+                isResizing = false;
             }
-            
-            isDragging = false;
-            isResizing = false;
-            document.removeEventListener('mousemove', onMouseMove);
-            document.removeEventListener('mouseup', onMouseUp);
-        };
-
-        snippet.addEventListener('mousedown', (e) => {
-            // Get snippet ID
-            snippetId = parseInt(snippet.id.split('-')[1]);
-            
-            // Debug info
-            console.log('MouseDown event on snippet:', snippetId);
-            console.log('Target element:', e.target);
-            console.log('Element classes:', e.target.className);
-            
-            if (e.target.classList.contains('resize-handle') || e.target.closest('.resize-handle')) {
-                isResizing = true;
-                startWidth = snippet.offsetWidth;
-                startHeight = snippet.offsetHeight;
-                currentSize = { width: startWidth, height: startHeight };
-                startX = e.clientX;
-                startY = e.clientY;
-                document.addEventListener('mousemove', onMouseMove);
-                document.addEventListener('mouseup', onMouseUp);
-            } else if (!e.target.closest('.snippet-controls')) {
-                isDragging = true;
-                initialX = snippet.offsetLeft;
-                initialY = snippet.offsetTop;
-                currentPosition = { x: initialX, y: initialY };
-                startX = e.clientX;
-                startY = e.clientY;
-                document.addEventListener('mousemove', onMouseMove);
-                document.addEventListener('mouseup', onMouseUp);
-            }
-        });
+        } catch (error) {
+            console.error('Error updating snippet:', error);
+            showAlert('Failed to update snippet: ' + error.message, 'danger');
+        } finally {
+            // Clean up regardless of success or failure
+            action = null;
+            activeSnippet = null;
+            console.log('Drag/resize ended');
+        }
+    };
+    
+    // Touch event handlers for mobile support
+    document.addEventListener('touchstart', (e) => {
+        // Similar logic to mousedown but for touch events
+        const touch = e.touches[0];
+        if (touch) {
+            // Simulate a mousedown event
+            const simulatedEvent = {
+                clientX: touch.clientX,
+                clientY: touch.clientY,
+                target: document.elementFromPoint(touch.clientX, touch.clientY),
+                preventDefault: () => e.preventDefault()
+            };
+            // Reuse the same logic
+            document.dispatchEvent(new MouseEvent('mousedown', simulatedEvent));
+        }
+    }, { passive: false });
+    
+    document.addEventListener('touchmove', (e) => {
+        const touch = e.touches[0];
+        if (touch && (isDragging || isResizing)) {
+            e.preventDefault(); // Prevent scrolling while dragging
+            const simulatedEvent = {
+                clientX: touch.clientX,
+                clientY: touch.clientY
+            };
+            onMouseMove(simulatedEvent);
+        }
+    }, { passive: false });
+    
+    document.addEventListener('touchend', () => {
+        if (isDragging || isResizing) {
+            onMouseUp();
+        }
     });
+    
+    // Add the global mouse event listeners
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+    
+    // Also handle cases where mouse leaves the window
+    document.addEventListener('mouseleave', onMouseUp);
+    
+    console.log('Drag and resize event listeners attached');
+}
+
+// Immediate save functions (used for final save on mouse up)
+async function savePositionImmediately(snippetId, position) {
+    try {
+        console.log(`Final position save for snippet ${snippetId}:`, position);
+        
+        // Check if we're in fallback mode
+        const isInFallbackMode = token === 'admin_fallback_token';
+        
+        if (isInFallbackMode) {
+            // Update in localStorage
+            const storedPages = JSON.parse(localStorage.getItem('fallbackPages') || '{}');
+            const page = storedPages[currentPage];
+            
+            if (!page || !Array.isArray(page.snippets)) {
+                throw new Error('Cannot find page or snippets in local storage');
+            }
+            
+            // Find and update snippet
+            const snippetIndex = page.snippets.findIndex(s => s.id === snippetId);
+            if (snippetIndex === -1) {
+                throw new Error(`Snippet ${snippetId} not found in local storage`);
+            }
+            
+            // Update position
+            page.snippets[snippetIndex].position = position;
+            
+            // Save back to localStorage
+            storedPages[currentPage] = page;
+            localStorage.setItem('fallbackPages', JSON.stringify(storedPages));
+            showAlert('Position saved', 'success', 1000);
+            return true;
+        } else {
+            // Update via API
+            const page = await getCurrentPage();
+            if (!page) throw new Error('Failed to get current page');
+            
+            // Find the snippet
+            const snippetIndex = page.snippets.findIndex(s => s.id === snippetId);
+            if (snippetIndex === -1) {
+                throw new Error(`Snippet ${snippetId} not found in current page`);
+            }
+            
+            // Create updated snippets array
+            const updatedSnippets = [...page.snippets];
+            updatedSnippets[snippetIndex] = {
+                ...updatedSnippets[snippetIndex],
+                position
+            };
+            
+            // Update the page
+            const result = await updatePage({
+                ...page,
+                snippets: updatedSnippets
+            });
+            
+            showAlert('Position saved', 'success', 1000);
+            return result;
+        }
+    } catch (error) {
+        console.error('Error saving position:', error);
+        showAlert('Failed to save position: ' + error.message, 'danger');
+        return false;
+    }
+}
+
+async function saveSizeImmediately(snippetId, size) {
+    try {
+        console.log(`Final size save for snippet ${snippetId}:`, size);
+        
+        // Check if we're in fallback mode
+        const isInFallbackMode = token === 'admin_fallback_token';
+        
+        if (isInFallbackMode) {
+            // Update in localStorage
+            const storedPages = JSON.parse(localStorage.getItem('fallbackPages') || '{}');
+            const page = storedPages[currentPage];
+            
+            if (!page || !Array.isArray(page.snippets)) {
+                throw new Error('Cannot find page or snippets in local storage');
+            }
+            
+            // Find and update snippet
+            const snippetIndex = page.snippets.findIndex(s => s.id === snippetId);
+            if (snippetIndex === -1) {
+                throw new Error(`Snippet ${snippetId} not found in local storage`);
+            }
+            
+            // Update size
+            page.snippets[snippetIndex].size = size;
+            
+            // Save back to localStorage
+            storedPages[currentPage] = page;
+            localStorage.setItem('fallbackPages', JSON.stringify(storedPages));
+            showAlert('Size saved', 'success', 1000);
+            return true;
+        } else {
+            // Update via API
+            const page = await getCurrentPage();
+            if (!page) throw new Error('Failed to get current page');
+            
+            // Find the snippet
+            const snippetIndex = page.snippets.findIndex(s => s.id === snippetId);
+            if (snippetIndex === -1) {
+                throw new Error(`Snippet ${snippetId} not found in current page`);
+            }
+            
+            // Create updated snippets array
+            const updatedSnippets = [...page.snippets];
+            updatedSnippets[snippetIndex] = {
+                ...updatedSnippets[snippetIndex],
+                size
+            };
+            
+            // Update the page
+            const result = await updatePage({
+                ...page,
+                snippets: updatedSnippets
+            });
+            
+            showAlert('Size saved', 'success', 1000);
+            return result;
+        }
+    } catch (error) {
+        console.error('Error saving size:', error);
+        showAlert('Failed to save size: ' + error.message, 'danger');
+        return false;
+    }
 }
 
 function showAlert(message, type) {
@@ -3320,4 +3531,206 @@ function renderSnippets(snippets = [], navButtons = []) {
         setTimeout(initializeFileDownloadHandler, 500);
     }
 }
+
+// Debounce function for position/size updates
+function debounce(func, wait) {
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(updateTimeout);
+            func(...args);
+        };
+        clearTimeout(updateTimeout);
+        updateTimeout = setTimeout(later, wait);
+    };
+}
+
+// Throttle function for frequent updates
+function throttle(func, limit) {
+    let inThrottle;
+    return function executedFunction(...args) {
+        if (!inThrottle) {
+            func(...args);
+            inThrottle = true;
+            setTimeout(() => inThrottle = false, limit);
+        }
+    };
+}
+
+// Debounced update functions
+const debouncedUpdatePosition = debounce(async (snippetId, position) => {
+    try {
+        console.log(`Saving position for snippet ${snippetId}:`, position);
+        
+        // Check if we're in fallback mode (using the fallback admin token)
+        const isInFallbackMode = token === 'admin_fallback_token';
+        
+        if (isInFallbackMode) {
+            // In fallback mode, update position in localStorage
+            const storedPages = JSON.parse(localStorage.getItem('fallbackPages') || '{}');
+            const page = storedPages[currentPage];
+            
+            if (!page || !Array.isArray(page.snippets)) {
+                console.error('Cannot find page or snippets in local storage');
+                return;
+            }
+            
+            // Find and update the snippet position
+            const snippetIndex = page.snippets.findIndex(s => s.id === snippetId);
+            if (snippetIndex === -1) {
+                console.error(`Snippet ${snippetId} not found in local storage`);
+                return;
+            }
+            
+            // Update the position
+            page.snippets[snippetIndex].position = position;
+            
+            // Save back to localStorage
+            storedPages[currentPage] = page;
+            localStorage.setItem('fallbackPages', JSON.stringify(storedPages));
+            console.log('Position saved to local storage');
+        } else {
+            const page = await getCurrentPage();
+            if (!page) throw new Error('Failed to get current page');
+
+            // Find the snippet to update
+            const snippetIndex = page.snippets.findIndex(s => s.id === snippetId);
+            if (snippetIndex === -1) {
+                console.error(`Snippet ${snippetId} not found in current page`);
+                return;
+            }
+
+            // Create a new array with the updated snippet
+            const updatedSnippets = [...page.snippets];
+            updatedSnippets[snippetIndex] = {
+                ...updatedSnippets[snippetIndex],
+                position
+            };
+
+            // Save the updated page
+            const result = await updatePage({ 
+                ...page, 
+                snippets: updatedSnippets 
+            });
+            
+            console.log(`Position saved for snippet ${snippetId}:`, position);
+            showAlert('Position saved', 'success', 1000); // Brief success message
+        }
+    } catch (error) {
+        console.error('Position update error:', error);
+        showAlert('Failed to save position: ' + error.message, 'danger');
+    }
+}, 300); // Reduce debounce time for more responsive saves
+
+const debouncedUpdateSize = debounce(async (snippetId, size) => {
+    try {
+        console.log(`Saving size for snippet ${snippetId}:`, size);
+        
+        // Check if we're in fallback mode (using the fallback admin token)
+        const isInFallbackMode = token === 'admin_fallback_token';
+        
+        if (isInFallbackMode) {
+            // In fallback mode, update size in localStorage
+            const storedPages = JSON.parse(localStorage.getItem('fallbackPages') || '{}');
+            const page = storedPages[currentPage];
+            
+            if (!page || !Array.isArray(page.snippets)) {
+                console.error('Cannot find page or snippets in local storage');
+                return;
+            }
+            
+            // Find and update the snippet size
+            const snippetIndex = page.snippets.findIndex(s => s.id === snippetId);
+            if (snippetIndex === -1) {
+                console.error(`Snippet ${snippetId} not found in local storage`);
+                return;
+            }
+            
+            // Update the size
+            page.snippets[snippetIndex].size = size;
+            
+            // Save back to localStorage
+            storedPages[currentPage] = page;
+            localStorage.setItem('fallbackPages', JSON.stringify(storedPages));
+            console.log('Size saved to local storage');
+        } else {
+            const page = await getCurrentPage();
+            if (!page) throw new Error('Failed to get current page');
+
+            // Find the snippet to update
+            const snippetIndex = page.snippets.findIndex(s => s.id === snippetId);
+            if (snippetIndex === -1) {
+                console.error(`Snippet ${snippetId} not found in current page`);
+                return;
+            }
+
+            // Create a new array with the updated snippet
+            const updatedSnippets = [...page.snippets];
+            updatedSnippets[snippetIndex] = {
+                ...updatedSnippets[snippetIndex],
+                size
+            };
+
+            // Save the updated page
+            const result = await updatePage({ 
+                ...page, 
+                snippets: updatedSnippets 
+            });
+            
+            console.log(`Size saved for snippet ${snippetId}:`, size);
+            showAlert('Size saved', 'success', 1000); // Brief success message
+        }
+    } catch (error) {
+        console.error('Size update error:', error);
+        showAlert('Failed to save size: ' + error.message, 'danger');
+    }
+}, 300); // Reduce debounce time for more responsive saves
+
+// Function to render a snippet on the page
+async function renderSnippet(snippetData) {
+    try {
+        console.log('Rendering snippet:', snippetData);
+        
+        // Create snippet container
+        const snippetContainer = document.createElement('div');
+        snippetContainer.className = 'snippet-container';
+        snippetContainer.id = `snippet-${snippetData.id}`;
+        snippetContainer.setAttribute('data-snippet-id', snippetData.id);
+        
+        // Set position
+        if (snippetData.position) {
+            snippetContainer.style.left = `${snippetData.position.left || 0}px`;
+            snippetContainer.style.top = `${snippetData.position.top || 0}px`;
+        } else {
+            // Default position if none specified
+            snippetContainer.style.left = '50px';
+            snippetContainer.style.top = '50px';
+        }
+        
+        // Set size
+        if (snippetData.size) {
+            snippetContainer.style.width = `${snippetData.size.width || 300}px`;
+            snippetContainer.style.height = `${snippetData.size.height || 200}px`;
+        } else {
+            // Default size if none specified
+            snippetContainer.style.width = '300px';
+            snippetContainer.style.height = '200px';
+        }
+        
+        // Create content container
+        const contentContainer = document.createElement('div');
+        contentContainer.className = 'snippet-content';
+        
+        // Process the HTML content (if any)
+        if (snippetData.html) {
+            // Sanitize and process the HTML
+            const sanitizedHtml = DOMPurify.sanitize(snippetData.html);
+            contentContainer.innerHTML = sanitizedHtml;
+            
+            // Execute any scripts inside the content
+            const scripts = contentContainer.querySelectorAll('script');
+            scripts.forEach(oldScript => {
+                const newScript = document.createElement('script');
+                
+                // Copy all attributes from the old script to the new one
+                Array.from(oldScript.attributes).forEach(attr => {
   

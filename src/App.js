@@ -29,25 +29,52 @@ const App = () => {
                 config.headers.Authorization = `Bearer ${token}`;
             }
             return config;
+        }, error => {
+            console.error('Request interceptor error:', error);
+            return Promise.reject(error);
         });
 
         // Handle token expiration and retries
         axios.interceptors.response.use(
             response => response,
             async error => {
-                if (error.response?.status === 401 && retryCount < 3) {
-                    localStorage.removeItem('token');
-                    localStorage.removeItem('isAdmin');
-                    localStorage.removeItem('isUser');
-                    setIsAdmin(false);
-                    setIsUser(false);
-                    setError('Session expired. Please login again.');
+                console.log('Axios response error:', error.message, 'Status:', error.response?.status);
+                
+                // Only handle auth errors when they're actually auth related
+                if (error.response?.status === 401 && 
+                    error.response?.data?.message?.includes('token') && 
+                    retryCount < 3) {
+                    console.log('Token expired or invalid, handling auth error');
+                    
+                    // Don't immediately clear auth state - first try a refresh or retry
                     setRetryCount(count => count + 1);
+                    setError('Session may have expired. Retrying...');
+                    
+                    // Wait before retry
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    
+                    // If max retries reached, then clear auth
+                    if (retryCount >= 2) {
+                        console.log('Max retries reached, clearing auth state');
+                        localStorage.removeItem('token');
+                        localStorage.removeItem('isAdmin');
+                        localStorage.removeItem('isUser');
+                        setIsAdmin(false);
+                        setIsUser(false);
+                        setError('Session expired. Please login again.');
+                    } else {
+                        // Try the request again
+                        return axios(error.config);
+                    }
                 } else if (error.response?.status === 503 && retryCount < 3) {
                     // Service unavailable - retry after delay
                     await new Promise(resolve => setTimeout(resolve, 1000));
                     setRetryCount(count => count + 1);
                     return axios(error.config);
+                } else if (!error.response && error.message.includes('Network Error')) {
+                    // Handle network errors separately
+                    console.log('Network error - server may be down');
+                    setError('Network error. Server may be down. Please check your connection.');
                 }
                 return Promise.reject(error);
             }
@@ -57,6 +84,7 @@ const App = () => {
         const checkHealth = async () => {
             try {
                 await axios.get('/api/health');
+                console.log('Server health check passed');
             } catch (err) {
                 console.error('Server health check failed:', err);
                 setError('Server connection issue. Please try again later.');
@@ -65,6 +93,7 @@ const App = () => {
         checkHealth();
 
         return () => {
+            // Clean up function
             setRetryCount(0);
         };
     }, [retryCount]);
@@ -226,19 +255,34 @@ const App = () => {
                 snippets: [...p.snippets, newSnippet]
             } : p));
 
-            // Server update
-            await axios.put(`/api/pages/${currentPage}`, {
-                ...updatedPage,
-                snippets: [...updatedPage.snippets, newSnippet]
-            });
-            
-            console.log('Snippet added successfully');
+            // Server update wrapped in try/catch to isolate API errors
+            try {
+                await axios.put(`/api/pages/${currentPage}`, {
+                    ...updatedPage,
+                    snippets: [...updatedPage.snippets, newSnippet]
+                });
+                console.log('Snippet added successfully');
+            } catch (apiError) {
+                // Handle API errors separately to prevent logout
+                console.error('API error when adding snippet:', apiError);
+                
+                if (apiError.response?.status === 401) {
+                    setError('Authentication error. Please refresh the page.');
+                } else {
+                    setError(`Server error: ${apiError.message}. Snippet may not be saved.`);
+                }
+                
+                // Keep the snippet in the UI since it was added optimistically
+                // This prevents interface disruption on API failures
+            }
         } catch (err) {
             console.error('Failed to add snippet:', err);
             setError(`Failed to add snippet: ${err.message}`);
             
-            // Rollback to original state
-            loadPages();
+            // Only rollback to original state for non-API errors
+            if (err.message !== 'Current page not found') {
+                loadPages();
+            }
         }
     };
 
