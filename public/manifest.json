@@ -3,15 +3,9 @@
   "name": "HTML Snippet Builder",
   "icons": [
     {
-      "src": "favicon.ico",
-      "sizes": "64x64 32x32 24x24 16x16",
-      "type": "image/x-icon"
-    },
-    {
-      "src": "logo192.png",
-      "type": "image/png",
-      "sizes": "192x192",
-      "purpose": "any maskable"
+      "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAACXBIWXMAAAsSAAALEgHS3X78AAABb0lEQVQ4y6WTsUsCYRjGH7OL5KKIiKCha6hBB2mQwcXF0R0cXERDU0X/QVtLNDg0RBB0YxFBFzgJNRSIFS05iBwdpZRQB9UXvnfcXaLk0AcP733v8/u+777vVSKRCLPSb8WsyWmapjTjTGmJzGR3dxO/0+0+hMLhA2Ua5/PNzQ5n6J7o9frPfD5/YlnWqLLkfL95cnk83vPTq6vzP5eV4BC8WCw+YvJBrVZLud3uXZ7ndrP/ClitVlO1Wu1JkqQbh8Ox0+12M6IozrTbbeMvwO12e6zX67cymUzSbrefcRy3DUAN6IJzFEWRHMcxhUJB6fV6Wa/Xu2O321cbjcZLo9F4hfFAr9dvGwwG02Kx+A74N8Xj8YOgz+dLwKpUKpVIOBw+JEnyGN9fzWbzGTsZaDQaCYa7AHwBGBkMBhOCJJPJE0VRCrVa7QmNi8A88FEqlXIM86jX663lcrkrgN8BeAv4gMPhYPgOq1ar9EIwLhiMNxz4BbUgJ9qG6XjXAAAAAElFTkSuQmCC",
+      "sizes": "16x16",
+      "type": "image/png"
     }
   ],
   "start_url": "/",

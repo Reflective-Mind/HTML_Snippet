@@ -3733,4 +3733,43 @@ async function renderSnippet(snippetData) {
                 
                 // Copy all attributes from the old script to the new one
                 Array.from(oldScript.attributes).forEach(attr => {
-  
+                    try {
+                        newScript.setAttribute(attr.name, attr.value);
+                    } catch (error) {
+                        console.error('Error setting script attribute:', error);
+                    }
+                });
+                
+                // Set the script content
+                try {
+                    newScript.textContent = oldScript.textContent;
+                    
+                    // Replace the old script with the new one
+                    oldScript.parentNode.replaceChild(newScript, oldScript);
+                } catch (error) {
+                    console.error('Error replacing script:', error);
+                }
+            });
+        }
+        
+        // Append content to snippet container
+        snippetContainer.appendChild(contentContainer);
+        
+        // Return the created snippet container
+        return snippetContainer;
+    } catch (error) {
+        console.error('Error creating snippet container:', error);
+        return document.createElement('div'); // Return an empty div as fallback
+    }
+}
+
+// Initialize the application when the DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+    console.log('DOM fully loaded, initializing application');
+    try {
+        updateView();
+    } catch (error) {
+        console.error('Error during application initialization:', error);
+        alert('There was an error initializing the application. Please try refreshing the page.');
+    }
+});
