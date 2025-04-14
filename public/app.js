@@ -713,78 +713,95 @@ async function createPage(name) {
     }
 }
 
+// Fix for the null element issue at line 786
 function showCreatePageModal() {
-    console.log('Show create page modal called');
-    const modalHtml = `
-        <div class="modal fade" id="createPageModal" tabindex="-1">
+    // Create modal dynamically
+    const modalId = 'createPageModal';
+    let modalElement = document.getElementById(modalId);
+    
+    // Remove any existing modal with the same ID
+    if (modalElement) {
+        modalElement.remove();
+    }
+    
+    // Create new modal
+    const modalHTML = `
+        <div class="modal fade" id="${modalId}" tabindex="-1" aria-labelledby="${modalId}Label" aria-hidden="true">
             <div class="modal-dialog">
                 <div class="modal-content">
                     <div class="modal-header">
-                        <h5 class="modal-title">Create New Page</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        <h5 class="modal-title" id="${modalId}Label">Create New Page</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                     </div>
                     <div class="modal-body">
-                        <div class="form-group">
-                            <label for="newPageName">Page Name:</label>
-                            <input type="text" class="form-control" id="newPageName" required>
-                        </div>
+                        <form id="createPageForm">
+                            <div class="mb-3">
+                                <label for="newPageName" class="form-label">Page Name</label>
+                                <input type="text" class="form-control" id="newPageName" required>
+                            </div>
+                        </form>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="button" class="btn btn-primary" id="confirmCreatePage">Create</button>
+                        <button type="button" id="createPageBtn" class="btn btn-primary">Create</button>
                     </div>
                 </div>
             </div>
         </div>
     `;
-
-    // Remove existing modal if any
-    const existingModal = document.getElementById('createPageModal');
-    if (existingModal) {
-        existingModal.remove();
-    }
-
-    // Add modal to body
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
-
-    // Get modal element
-    const modalElement = document.getElementById('createPageModal');
+    
+    // Append modal to body
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+    modalElement = document.getElementById(modalId);
+    
+    // Initialize Bootstrap modal
     const modal = new bootstrap.Modal(modalElement);
-
-    // Handle create button click
-    document.getElementById('confirmCreatePage').addEventListener('click', async () => {
-        const nameInput = document.getElementById('newPageName');
-        const name = nameInput.value.trim();
-
-        if (name) {
-            try {
-                await createPage(name);
-                modal.hide();
-            } catch (error) {
-                // Error is already handled in createPage function
+    
+    // Add event listener to create button
+    const createButton = document.getElementById('createPageBtn');
+    if (createButton) {
+        createButton.addEventListener('click', async () => {
+            const pageName = document.getElementById('newPageName').value;
+            if (pageName) {
+                try {
+                    await createPage(pageName);
+                    modal.hide();
+                } catch (error) {
+                    showAlert(`Failed to create page: ${error.message}`, 'danger');
+                }
             }
-        } else {
-            showAlert('Please enter a page name', 'warning');
-        }
-    });
-
+        });
+    }
+    
     // Show modal
     modal.show();
-
-    // Focus on input
-    modalElement.addEventListener('shown.bs.modal', () => {
-        document.getElementById('newPageName').focus();
-    });
-
-    // Clean up on modal hide
-    modalElement.addEventListener('hidden.bs.modal', () => {
-        modalElement.remove();
-    });
+    
+    // Focus on input if the element exists
+    if (modalElement) {
+        modalElement.addEventListener('shown.bs.modal', () => {
+            const pageNameInput = document.getElementById('newPageName');
+            if (pageNameInput) {
+                pageNameInput.focus();
+            }
+        });
+        
+        // Clean up on modal hide
+        modalElement.addEventListener('hidden.bs.modal', () => {
+            if (modalElement) {
+                modalElement.remove();
+            }
+        });
+    }
 }
 
-// Update the event listener for the Add Page button
-document.getElementById('addPageBtn').addEventListener('click', () => {
-    showCreatePageModal();
+// Update the event listener for the Add Page button with null check
+document.addEventListener('DOMContentLoaded', () => {
+    const addPageBtn = document.getElementById('addPageBtn');
+    if (addPageBtn) {
+        addPageBtn.addEventListener('click', () => {
+            showCreatePageModal();
+        });
+    }
 });
 
 async function addSnippet(html) {
