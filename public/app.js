@@ -1,5 +1,4 @@
 // Global variables
-let htmlEditor, cssEditor, jsEditor;
 let isAutoRunEnabled = true;
 let currentSnippetId = null;
 let currentTabId = 'tab-0';
@@ -27,256 +26,186 @@ let layers = [
     }
 ];
 
+// Debug logging function
+function debugLog(message, type = 'info') {
+    // Log to browser console
+    console.log(message);
+    
+    // Log to debug panel if it exists
+    const debugPanel = document.getElementById('debugPanel');
+    const debugContent = document.getElementById('debugContent');
+    
+    if (debugPanel && debugContent) {
+        // Show the debug panel
+        debugPanel.style.display = 'block';
+        
+        // Create a new log entry
+        const entry = document.createElement('div');
+        entry.style.borderBottom = '1px solid #333';
+        entry.style.padding = '3px 0';
+        
+        // Set color based on type
+        switch(type) {
+            case 'error':
+                entry.style.color = '#ff5555';
+                break;
+            case 'warn':
+                entry.style.color = '#ffcc00';
+                break;
+            case 'success':
+                entry.style.color = '#55ff55';
+                break;
+            default:
+                entry.style.color = '#0f0';
+        }
+        
+        // Add timestamp
+        const time = new Date().toLocaleTimeString();
+        entry.textContent = `[${time}] ${message}`;
+        
+        // Add to debug content
+        debugContent.appendChild(entry);
+        
+        // Scroll to bottom
+        debugContent.scrollTop = debugContent.scrollHeight;
+    }
+}
+
 // Initialize the application
 document.addEventListener('DOMContentLoaded', () => {
-    setupEditors();
+    // Set up event listeners
     setupEventListeners();
-    setupConsoleOverride();
-    updateTabs();
-    runCode();
+    
+    // Initialize the app
     initApp();
+    console.log("Application initialized");
 });
-
-// Set up the code editors using CodeMirror
-function setupEditors() {
-    // HTML Editor
-    htmlEditor = CodeMirror(document.getElementById('html-editor'), {
-        mode: 'htmlmixed',
-        theme: 'monokai',
-        lineNumbers: true,
-        autoCloseTags: true,
-        autoCloseBrackets: true,
-        matchBrackets: true,
-        indentUnit: 2,
-        tabSize: 2,
-        lineWrapping: true
-    });
-
-    // CSS Editor
-    cssEditor = CodeMirror(document.getElementById('css-editor'), {
-        mode: 'css',
-        theme: 'monokai',
-        lineNumbers: true,
-        autoCloseBrackets: true,
-        matchBrackets: true,
-        indentUnit: 2,
-        tabSize: 2,
-        lineWrapping: true
-    });
-
-    // JavaScript Editor
-    jsEditor = CodeMirror(document.getElementById('js-editor'), {
-        mode: 'javascript',
-        theme: 'monokai',
-        lineNumbers: true,
-        autoCloseBrackets: true,
-        matchBrackets: true,
-        indentUnit: 2,
-        tabSize: 2,
-        lineWrapping: true
-    });
-
-    // Set up editor change events
-    htmlEditor.on('change', debounce(() => {
-        saveCurrentTab();
-        if (isAutoRunEnabled) runCode();
-    }, 1000));
-
-    cssEditor.on('change', debounce(() => {
-        saveCurrentTab();
-        if (isAutoRunEnabled) runCode();
-    }, 1000));
-
-    jsEditor.on('change', debounce(() => {
-        saveCurrentTab();
-        if (isAutoRunEnabled) runCode();
-    }, 1000));
-}
 
 // Set up all event listeners
 function setupEventListeners() {
-    // Panel tabs
-    document.querySelectorAll('.panel-tab').forEach(tab => {
-        tab.addEventListener('click', () => {
-            const activeTab = tab.dataset.tab;
-            
-            // Update active state for tabs
-            document.querySelectorAll('.panel-tab').forEach(t => {
-                t.classList.remove('active');
-            });
-            tab.classList.add('active');
-            
-            // Update active state for editor containers
-            document.querySelectorAll('.editor-container').forEach(container => {
-                container.classList.remove('active');
-            });
-            document.getElementById(`${activeTab}-editor`).classList.add('active');
-            
-            // Refresh the editor to fix any display issues
-            if (activeTab === 'html') htmlEditor.refresh();
-            if (activeTab === 'css') cssEditor.refresh();
-            if (activeTab === 'js') jsEditor.refresh();
+    debugLog("Setting up event listeners");
+    
+    // Add keyboard shortcut to toggle debug panel (Ctrl+D)
+    document.addEventListener('keydown', function(e) {
+        if (e.ctrlKey && e.key === 'd') {
+            e.preventDefault();
+            const debugPanel = document.getElementById('debugPanel');
+            if (debugPanel) {
+                debugPanel.style.display = debugPanel.style.display === 'none' ? 'block' : 'none';
+                debugLog("Debug panel toggled via keyboard shortcut");
+            }
+        }
+    });
+    
+    // Add event listener for the Edit Code button
+    const editCodeBtn = document.getElementById('editCodeBtn');
+    if (editCodeBtn) {
+        editCodeBtn.addEventListener('click', openEditor);
+        debugLog("Edit Code button listener attached");
+    } else {
+        debugLog("Edit Code button not found", "error");
+    }
+    
+    // Add event listeners for import/export
+    const exportBtn = document.querySelector('.import-export-button[onclick="exportData()"]');
+    if (exportBtn) {
+        exportBtn.onclick = null; // Remove inline handler
+        exportBtn.addEventListener('click', exportData);
+        debugLog("Export button listener attached");
+    } else {
+        debugLog("Export button not found", "warn");
+    }
+    
+    const importBtn = document.querySelector('.import-export-button[onclick="openImportModal()"]');
+    if (importBtn) {
+        importBtn.onclick = null; // Remove inline handler
+        importBtn.addEventListener('click', openImportModal);
+        debugLog("Import button listener attached");
+    } else {
+        debugLog("Import button not found", "warn");
+    }
+    
+    // Add event listener for the layer selector
+    const layerSelector = document.getElementById('layerSelector');
+    if (layerSelector) {
+        layerSelector.onchange = null; // Remove inline handler
+        layerSelector.addEventListener('change', () => {
+            switchLayer(layerSelector.value);
+            debugLog("Layer switched to " + layerSelector.value);
         });
-    });
-
-    // Device preview buttons
-    document.querySelectorAll('.device-button').forEach(button => {
-        button.addEventListener('click', () => {
-            const device = button.dataset.device;
-            
-            document.querySelectorAll('.device-button').forEach(b => {
-                b.classList.remove('active');
-            });
-            button.classList.add('active');
-            
-            const previewContainer = document.querySelector('.preview-container');
-            previewContainer.classList.remove('desktop', 'tablet', 'mobile');
-            previewContainer.classList.add(device);
-        });
-    });
-
-    // Run code button
-    document.getElementById('runBtn').addEventListener('click', runCode);
-
-    // Auto-run toggle
-    const autoRunToggle = document.getElementById('autoRunToggle');
-    autoRunToggle.addEventListener('click', () => {
-        isAutoRunEnabled = !isAutoRunEnabled;
-        autoRunToggle.classList.toggle('active', isAutoRunEnabled);
-    });
-
-    // Clear console button
-    document.getElementById('clearConsoleBtn').addEventListener('click', clearConsole);
-
-    // New tab button
-    document.getElementById('newTabBtn').addEventListener('click', createNewTab);
-
-    // Save button
-    document.getElementById('saveBtn').addEventListener('click', openSaveModal);
-
-    // Load button
-    document.getElementById('loadBtn').addEventListener('click', openLoadModal);
-
-    // Share button
-    document.getElementById('shareBtn').addEventListener('click', openShareModal);
-
-    // Settings button
-    document.getElementById('settingsBtn').addEventListener('click', openSettingsModal);
-
-    // Modal close buttons
-    document.querySelectorAll('.close-btn, .cancel-btn').forEach(button => {
-        button.addEventListener('click', () => {
-            document.querySelectorAll('.modal').forEach(modal => {
-                modal.classList.remove('show');
+    } else {
+        debugLog("Layer selector not found", "warn");
+    }
+    
+    // Add event listeners for modals
+    const closeButtons = document.querySelectorAll('.close');
+    if (closeButtons.length > 0) {
+        closeButtons.forEach(button => {
+            button.addEventListener('click', function() {
+                const modalId = this.closest('.modal').id;
+                document.getElementById(modalId).style.display = 'none';
+                debugLog("Modal closed: " + modalId);
             });
         });
-    });
-
-    // Save snippet button
-    const saveModal = document.getElementById('saveModal');
-    saveModal.querySelector('.save-btn').addEventListener('click', saveSnippet);
-
-    // Settings save button
-    const settingsModal = document.getElementById('settingsModal');
-    settingsModal.querySelector('.save-btn').addEventListener('click', saveSettings);
-
-    // Copy link button
-    document.getElementById('copyLinkBtn').addEventListener('click', copyShareLink);
-
-    // Social share buttons
-    document.getElementById('shareTwitterBtn').addEventListener('click', () => shareOnSocial('twitter'));
-    document.getElementById('shareFacebookBtn').addEventListener('click', () => shareOnSocial('facebook'));
-    document.getElementById('shareEmailBtn').addEventListener('click', () => shareOnSocial('email'));
-
-    // Resizable panels
-    setupResizablePanels();
+        debugLog("Modal close button listeners attached");
+    } else {
+        debugLog("Modal close buttons not found", "warn");
+    }
+    
+    // Add event listener for applying code
+    const applyCodeBtn = document.querySelector('#editorActions button:last-child');
+    if (applyCodeBtn) {
+        applyCodeBtn.onclick = null; // Remove inline handler
+        applyCodeBtn.addEventListener('click', applyCode);
+        debugLog("Apply Code button listener attached");
+    } else {
+        debugLog("Apply Code button not found", "warn");
+    }
+    
+    // Ensure the overlay closes the editor
+    const editorOverlay = document.getElementById('editorOverlay');
+    if (editorOverlay) {
+        editorOverlay.onclick = null; // Remove inline handler
+        editorOverlay.addEventListener('click', closeEditor);
+        debugLog("Editor overlay listener attached");
+    } else {
+        debugLog("Editor overlay not found", "warn");
+    }
+    
+    // Also attach click handlers for adding/deleting layers
+    const addLayerBtn = document.querySelector('button[onclick="addLayer()"]');
+    if (addLayerBtn) {
+        addLayerBtn.onclick = null;
+        addLayerBtn.addEventListener('click', addLayer);
+        debugLog("Add layer button listener attached");
+    }
+    
+    const deleteLayerBtn = document.querySelector('button[onclick="deleteLayer()"]');
+    if (deleteLayerBtn) {
+        deleteLayerBtn.onclick = null;
+        deleteLayerBtn.addEventListener('click', deleteLayer);
+        debugLog("Delete layer button listener attached");
+    }
+    
+    debugLog("All event listeners set up", "success");
 }
 
 // Run the code in the preview iframe
 function runCode() {
-    const previewIframe = document.getElementById('preview-iframe');
-    const html = htmlEditor.getValue();
-    const css = cssEditor.getValue();
-    const js = jsEditor.getValue();
-
-    // Create a complete HTML document
-    const fullHtml = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <style>
-                ${css}
-            </style>
-        </head>
-        <body>
-            ${html}
-            <script>
-                // Override console methods to capture logs
-                (function(){
-                    const oldLog = console.log;
-                    const oldWarn = console.warn;
-                    const oldError = console.error;
-                    const oldInfo = console.info;
-                    
-                    console.log = function() {
-                        window.parent.postMessage({
-                            type: 'console',
-                            method: 'log',
-                            args: Array.from(arguments)
-                        }, '*');
-                        oldLog.apply(console, arguments);
-                    };
-                    
-                    console.warn = function() {
-                        window.parent.postMessage({
-                            type: 'console',
-                            method: 'warn',
-                            args: Array.from(arguments)
-                        }, '*');
-                        oldWarn.apply(console, arguments);
-                    };
-                    
-                    console.error = function() {
-                        window.parent.postMessage({
-                            type: 'console',
-                            method: 'error',
-                            args: Array.from(arguments)
-                        }, '*');
-                        oldError.apply(console, arguments);
-                    };
-                    
-                    console.info = function() {
-                        window.parent.postMessage({
-                            type: 'console',
-                            method: 'info',
-                            args: Array.from(arguments)
-                        }, '*');
-                        oldInfo.apply(console, arguments);
-                    };
-                    
-                    window.onerror = function(message, source, lineno, colno, error) {
-                        window.parent.postMessage({
-                            type: 'error',
-                            message,
-                            source,
-                            lineno,
-                            colno
-                        }, '*');
-                        return false;
-                    };
-                })();
-                
-                // User's JavaScript code
-                ${js}
-            </script>
-        </body>
-        </html>
-    `;
-
-    // Set the iframe content
-    previewIframe.srcdoc = fullHtml;
+    try {
+        console.log("Running code");
+        const currentTab = getCurrentTab();
+        if (!currentTab) {
+            console.error("No current tab found");
+            return;
+        }
+        
+        // Just update the preview with the current tab's content
+        updatePreview();
+        console.log("Code executed successfully");
+    } catch (error) {
+        console.error("Error running code:", error);
+    }
 }
 
 // Override the console to capture logs from the iframe
@@ -993,28 +922,57 @@ function setupAutoSave() {
 }
 
 function initApp() {
-    setupEditors();
-    setupEventListeners();
-    setupResizablePanels();
+    console.log("Initializing application");
     
-    // Immediately try to restore from localStorage
+    // Try to restore from localStorage first
     restoreFromLocalStorage();
     
-    // Setup the enhanced auto-save features
-    setupAutoSave();
+    // Setup event listeners
+    setupEventListeners();
     
-    // Setup other event listeners and UI components
-    if (layers[currentLayerIndex].tabs.length === 0) {
-        addTab();
+    // Initialize UI components
+    if (!layers || layers.length === 0) {
+        console.warn("No layers found, creating default layer");
+        // Create a default layer if none exists
+        layers = [
+            {
+                name: "Layer 1",
+                tabs: [
+                    {
+                        id: "tab1",
+                        name: "Untitled",
+                        content: "<!DOCTYPE html>\n<html>\n<head>\n    <title>HTML Content</title>\n</head>\n<body>\n    <h1>Welcome to HTML Viewer</h1>\n    <p>Edit the code to see your changes in real-time!</p>\n</body>\n</html>"
+                    }
+                ],
+                activeTabId: "tab1"
+            }
+        ];
+        currentLayerIndex = 0;
     }
     
+    // If the layer has no tabs, add a default tab
+    const currentLayer = layers[currentLayerIndex];
+    if (!currentLayer.tabs || currentLayer.tabs.length === 0) {
+        console.warn("Current layer has no tabs, adding default tab");
+        currentLayer.tabs = [
+            {
+                id: "tab1",
+                name: "Untitled",
+                content: "<!DOCTYPE html>\n<html>\n<head>\n    <title>HTML Content</title>\n</head>\n<body>\n    <h1>Welcome to HTML Viewer</h1>\n    <p>Edit the code to see your changes in real-time!</p>\n</body>\n</html>"
+            }
+        ];
+        currentLayer.activeTabId = "tab1";
+    }
+    
+    // Update the UI
+    updateLayerSelector();
     renderTabs();
     updatePreview();
     
-    // Manual save to ensure initial state is preserved
-    saveToLocalStorage();
+    // Setup automatic saving
+    setupAutoSave();
     
-    console.log("Application initialized with enhanced browser storage");
+    console.log("Application initialized successfully");
 }
 
 // Layer Management Functions
@@ -1195,11 +1153,23 @@ function renameCurrentTab(newName) {
 
 // Editor Functions
 function openEditor() {
+    debugLog("Opening editor");
     const currentTab = getCurrentTab();
-    document.getElementById('htmlEditor').value = currentTab.content;
-    document.getElementById('editorPopup').style.display = 'flex';
-    document.getElementById('editorOverlay').style.display = 'block';
-    document.getElementById('errorOutput').style.display = 'none';
+    if (!currentTab) {
+        debugLog("No current tab found", "error");
+        return;
+    }
+    
+    const htmlEditor = document.getElementById('htmlEditor');
+    if (htmlEditor) {
+        htmlEditor.value = currentTab.content;
+        document.getElementById('editorPopup').style.display = 'flex';
+        document.getElementById('editorOverlay').style.display = 'block';
+        document.getElementById('errorOutput').style.display = 'none';
+        debugLog("Editor opened with content", "success");
+    } else {
+        debugLog("HTML editor element not found", "error");
+    }
 }
 
 function closeEditor() {
@@ -1209,27 +1179,74 @@ function closeEditor() {
 
 function applyCode() {
     try {
-        const htmlContent = document.getElementById('htmlEditor').value;
+        debugLog("Applying code changes");
+        const htmlEditor = document.getElementById('htmlEditor');
+        if (!htmlEditor) {
+            debugLog("HTML editor element not found", "error");
+            return;
+        }
+        
+        const htmlContent = htmlEditor.value;
+        if (!htmlContent) {
+            debugLog("HTML content is empty", "warn");
+        }
+        
         const currentTab = getCurrentTab();
+        if (!currentTab) {
+            debugLog("No current tab found", "error");
+            document.getElementById('errorOutput').style.display = 'block';
+            document.getElementById('errorOutput').textContent = "No active tab to apply code to";
+            return;
+        }
+        
+        // Update the tab content
         currentTab.content = htmlContent;
         
+        // Update the preview
         updatePreview();
+        
+        // Close the editor
         closeEditor();
         
-        // Explicitly save changes to localStorage
+        // Save to localStorage
         saveToLocalStorage();
+        
+        debugLog("Code applied successfully", "success");
     } catch (error) {
+        debugLog("Error applying code: " + error.message, "error");
         document.getElementById('errorOutput').style.display = 'block';
         document.getElementById('errorOutput').textContent = error.message;
     }
 }
 
 function updatePreview() {
-    const preview = document.getElementById('preview');
-    const currentTab = getCurrentTab();
-    
-    // Set content to the iframe
-    preview.srcdoc = currentTab.content;
+    try {
+        debugLog("Updating preview");
+        const preview = document.getElementById('preview');
+        if (!preview) {
+            debugLog("Preview iframe not found", "error");
+            return;
+        }
+        
+        const currentTab = getCurrentTab();
+        if (!currentTab) {
+            debugLog("No current tab found", "error");
+            return;
+        }
+        
+        // Set content to the iframe with proper error handling
+        try {
+            // Set content to the iframe
+            preview.srcdoc = currentTab.content;
+            debugLog("Preview updated successfully", "success");
+        } catch (error) {
+            debugLog("Error updating preview: " + error.message, "error");
+            // If there's an error, try to at least show something
+            preview.srcdoc = `<html><body><h1>Preview Error</h1><p>${error.message}</p></body></html>`;
+        }
+    } catch (error) {
+        debugLog("Fatal error in updatePreview: " + error.message, "error");
+    }
 }
 
 // Clipboard Functions
@@ -1303,10 +1320,18 @@ function openImportModal() {
 
 function importData() {
     try {
+        debugLog("Attempting to import data");
         const importString = document.getElementById('importExportTextarea').value;
+        if (!importString || importString.trim() === '') {
+            debugLog("Import data is empty", "warn");
+            alert("Please enter valid data to import");
+            return;
+        }
+        
         const importedData = JSON.parse(importString);
         
         if (importedData && importedData.layers && Array.isArray(importedData.layers)) {
+            debugLog("Valid layer data found, importing...");
             layers = importedData.layers;
             currentLayerIndex = importedData.currentLayerIndex || 0;
             
@@ -1315,17 +1340,26 @@ function importData() {
             }
             
             updateLayerSelector();
-            document.getElementById('layerSelector').value = currentLayerIndex;
+            
+            // Make sure the UI reflects the loaded data
+            const layerSelector = document.getElementById('layerSelector');
+            if (layerSelector) {
+                layerSelector.value = currentLayerIndex;
+                debugLog("Updated layer selector to index " + currentLayerIndex);
+            }
             
             renderTabs();
             updatePreview();
             saveToLocalStorage();
             
             closeImportExportModal();
+            debugLog("Import completed successfully", "success");
         } else {
-            alert("Invalid import data format.");
+            debugLog("Invalid import data format", "error");
+            alert("Invalid import data format. The data must contain layers array.");
         }
     } catch (error) {
+        debugLog("Import error: " + error.message, "error");
         alert("Error importing data: " + error.message);
     }
 }
@@ -1351,12 +1385,19 @@ function saveToLocalStorage() {
 
 function restoreFromLocalStorage() {
     try {
+        console.log("Attempting to restore data from localStorage");
         const savedData = localStorage.getItem('htmlLayerEditorData');
         
-        if (savedData) {
+        if (!savedData) {
+            console.warn("No saved data found in localStorage");
+            return false;
+        }
+        
+        try {
             const parsedData = JSON.parse(savedData);
             
             if (parsedData && parsedData.layers && Array.isArray(parsedData.layers)) {
+                console.log("Valid data found in localStorage, restoring...");
                 layers = parsedData.layers;
                 currentLayerIndex = parsedData.currentLayerIndex || 0;
                 
@@ -1364,18 +1405,19 @@ function restoreFromLocalStorage() {
                     currentLayerIndex = 0;
                 }
                 
-                updateLayerSelector();
-                
-                // Make sure the UI reflects the loaded data
-                if (document.getElementById('layerSelector')) {
-                    document.getElementById('layerSelector').value = currentLayerIndex;
-                }
-                
                 console.log("Successfully restored data from localStorage");
+                return true;
+            } else {
+                console.warn("Invalid data format in localStorage", parsedData);
+                return false;
             }
+        } catch (parseError) {
+            console.error("Error parsing localStorage data:", parseError);
+            return false;
         }
     } catch (error) {
-        console.error("Error restoring from localStorage:", error);
+        console.error("Error accessing localStorage:", error);
+        return false;
     }
 }
 
