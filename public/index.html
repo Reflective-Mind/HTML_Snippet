@@ -459,12 +459,6 @@
         <button onclick="addLayer()">Add Layer</button>
         <button onclick="deleteLayer()">Delete Layer</button>
         <button id="editCodeBtn" onclick="openEditor()">Edit Code</button>
-
-        <!-- Server actions menu -->
-        <div id="serverActionsMenu">
-            <button onclick="openSaveModal()">Save to Server</button>
-            <button onclick="openLoadModal()">Load from Server</button>
-        </div>
     </div>
     
     <div id="previewContainer">
@@ -497,41 +491,6 @@
             <div class="modal-buttons">
                 <button class="cancel-button" onclick="closeImportExportModal()">Cancel</button>
                 <button id="confirmButton" class="confirm-button" onclick="importData()">Import</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Save Modal -->
-    <div id="saveModal" class="modal">
-        <div class="modal-content">
-            <span class="close" onclick="closeSaveModal()">&times;</span>
-            <h2>Save to Server</h2>
-            <p>Save your current layer to the server for later use.</p>
-            <div>
-                <label for="snippetName">Name</label>
-                <input type="text" id="snippetName" placeholder="Enter a name for your snippet" style="width: 100%; padding: 8px; margin: 10px 0; background: rgba(0,0,0,0.3); color: white; border: 1px solid #555; border-radius: 4px;">
-                
-                <label for="snippetDescription">Description (optional)</label>
-                <textarea id="snippetDescription" placeholder="Enter a description" style="width: 100%; height: 80px; padding: 8px; margin: 10px 0; background: rgba(0,0,0,0.3); color: white; border: 1px solid #555; border-radius: 4px;"></textarea>
-            </div>
-            <div class="modal-buttons">
-                <button class="cancel-button" onclick="closeSaveModal()">Cancel</button>
-                <button class="confirm-button" onclick="saveSnippet()">Save</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Load Modal -->
-    <div id="loadModal" class="modal">
-        <div class="modal-content">
-            <span class="close" onclick="closeLoadModal()">&times;</span>
-            <h2>Load from Server</h2>
-            <p>Select a snippet to load from the server.</p>
-            <div class="snippets-list" id="snippetsList">
-                <!-- Snippets will be dynamically added here -->
-            </div>
-            <div class="modal-buttons">
-                <button class="cancel-button" onclick="closeLoadModal()">Cancel</button>
             </div>
         </div>
     </div>

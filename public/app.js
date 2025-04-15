@@ -823,18 +823,29 @@ window.addEventListener('load', () => {
 });
 
 function initApp() {
-    // Try to restore data from localStorage
+    setupEditors();
+    setupEventListeners();
+    setupResizablePanels();
+    
+    // Restore data from localStorage
     restoreFromLocalStorage();
     
-    // Initialize the tabs for the current layer
+    // Set up auto-save
+    setupAutoSave();
+    setupEditorChangeListeners();
+    
+    // Check for shared data in URL
+    checkUrlForSharedData();
+    
+    // Set up initial tab and layer
+    if (layers[currentLayerIndex].tabs.length === 0) {
+        addTab();
+    }
+    
     renderTabs();
     updatePreview();
     
-    // Check for data in URL hash (for shared snippets)
-    checkUrlForSharedData();
-    
-    // Set up auto-save to localStorage
-    setInterval(saveToLocalStorage, 5000);
+    console.log("Application initialized with browser storage");
 }
 
 // Layer Management Functions
@@ -1151,7 +1162,7 @@ function closeImportExportModal() {
     document.getElementById('importExportModal').style.display = 'none';
 }
 
-// Local Storage Functions
+// Local Storage Functions - Enhanced
 function saveToLocalStorage() {
     try {
         const dataToSave = {
@@ -1160,6 +1171,7 @@ function saveToLocalStorage() {
         };
         
         localStorage.setItem('htmlLayerEditorData', JSON.stringify(dataToSave));
+        console.log("Auto-saved to localStorage:", new Date().toLocaleTimeString());
     } catch (error) {
         console.error("Error saving to localStorage:", error);
     }
@@ -1237,145 +1249,38 @@ function shareCurrentTab() {
     prompt("Share this link:", shareUrl);
 }
 
-// Server Integration Functions
-async function openSaveModal() {
-    const saveModal = document.getElementById('saveModal');
-    document.getElementById('snippetName').value = getCurrentTab().name;
-    document.getElementById('snippetDescription').value = '';
-    saveModal.style.display = 'block';
-}
-
-function closeSaveModal() {
-    document.getElementById('saveModal').style.display = 'none';
-}
-
-async function saveSnippet() {
-    const name = document.getElementById('snippetName').value.trim();
-    const description = document.getElementById('snippetDescription').value.trim();
-    const currentTab = getCurrentTab();
-    
-    if (!name) {
-        alert('Please enter a name for your snippet');
-        return;
-    }
-    
-    try {
-        const response = await fetch('/api/snippets', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                name,
-                description,
-                content: currentTab.content,
-                type: 'html'
-            })
-        });
-        
-        if (response.ok) {
-            const result = await response.json();
-            closeSaveModal();
-            alert(`Snippet "${name}" saved successfully!`);
-            
-            // Update the name of the current tab
-            if (name !== currentTab.name) {
-                renameCurrentTab(name);
-            }
-        } else {
-            const error = await response.json();
-            throw new Error(error.message || 'Error saving snippet');
-        }
-    } catch (error) {
-        alert(`Failed to save snippet: ${error.message}`);
-    }
-}
-
-async function openLoadModal() {
-    const loadModal = document.getElementById('loadModal');
-    const snippetsList = document.getElementById('snippetsList');
-    snippetsList.innerHTML = '<p>Loading snippets...</p>';
-    
-    loadModal.style.display = 'block';
-    
-    try {
-        const response = await fetch('/api/snippets');
-        
-        if (response.ok) {
-            const snippets = await response.json();
-            renderSnippetsList(snippets);
-        } else {
-            throw new Error('Failed to fetch snippets');
-        }
-    } catch (error) {
-        snippetsList.innerHTML = `<p>Error loading snippets: ${error.message}</p>`;
-    }
-}
-
-function closeLoadModal() {
-    document.getElementById('loadModal').style.display = 'none';
-}
-
-function renderSnippetsList(snippets) {
-    const snippetsList = document.getElementById('snippetsList');
-    
-    if (!snippets || snippets.length === 0) {
-        snippetsList.innerHTML = '<p>No snippets found</p>';
-        return;
-    }
-    
-    snippetsList.innerHTML = '';
-    
-    snippets.forEach(snippet => {
-        const snippetItem = document.createElement('div');
-        snippetItem.className = 'snippet-item';
-        snippetItem.onclick = () => loadSnippet(snippet._id);
-        
-        const snippetTitle = document.createElement('h3');
-        snippetTitle.textContent = snippet.name;
-        
-        const snippetDesc = document.createElement('p');
-        snippetDesc.textContent = snippet.description || 'No description';
-        
-        const snippetDate = document.createElement('div');
-        snippetDate.className = 'snippet-item-date';
-        snippetDate.textContent = new Date(snippet.createdAt).toLocaleDateString();
-        
-        snippetItem.appendChild(snippetTitle);
-        snippetItem.appendChild(snippetDesc);
-        snippetItem.appendChild(snippetDate);
-        
-        snippetsList.appendChild(snippetItem);
+// Auto-save setup
+function setupAutoSave() {
+    // Set up MutationObserver to detect changes in the DOM
+    const observer = new MutationObserver(() => {
+        saveToLocalStorage();
     });
+    
+    // Start observing the preview container
+    observer.observe(document.getElementById('previewContainer'), {
+        childList: true,
+        subtree: true,
+        attributes: true
+    });
+    
+    // Also set up interval saving as a backup
+    setInterval(saveToLocalStorage, 5000);
+    
+    console.log("Auto-save functionality enabled");
 }
 
-async function loadSnippet(id) {
-    try {
-        const response = await fetch(`/api/snippets/${id}`);
-        
-        if (response.ok) {
-            const snippet = await response.json();
-            
-            // Create a new tab with the loaded content
-            const currentLayer = layers[currentLayerIndex];
-            const newId = `layer${currentLayerIndex}_tab${Date.now()}`;
-            
-            currentLayer.tabs.push({
-                id: newId,
-                name: snippet.name,
-                content: snippet.content
-            });
-            
-            currentLayer.activeTabId = newId;
-            
-            renderTabs();
-            updatePreview();
-            saveToLocalStorage();
-            closeLoadModal();
-        } else {
-            throw new Error('Failed to load snippet');
-        }
-    } catch (error) {
-        alert(`Failed to load snippet: ${error.message}`);
-    }
+// Event listeners for editor changes
+function setupEditorChangeListeners() {
+    const htmlEditor = document.getElementById('htmlEditor');
+    
+    htmlEditor.addEventListener('input', () => {
+        saveToLocalStorage();
+    });
+    
+    // Set up applyCode to save to localStorage
+    const originalApplyCode = applyCode;
+    applyCode = function() {
+        originalApplyCode();
+        saveToLocalStorage();
+    };
 } 
