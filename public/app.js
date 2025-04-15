@@ -31,43 +31,46 @@ function debugLog(message, type = 'info') {
     // Log to browser console
     console.log(message);
     
+    // Check user preference for debug panel visibility
+    const debugPanelHidden = localStorage.getItem('debugPanelHidden') === 'true';
+    
     // Log to debug panel if it exists
     const debugPanel = document.getElementById('debugPanel');
     const debugContent = document.getElementById('debugContent');
     
     if (debugPanel && debugContent) {
-        // Show the debug panel
-        debugPanel.style.display = 'block';
-        
-        // Create a new log entry
-        const entry = document.createElement('div');
-        entry.style.borderBottom = '1px solid #333';
-        entry.style.padding = '3px 0';
-        
-        // Set color based on type
-        switch(type) {
-            case 'error':
-                entry.style.color = '#ff5555';
-                break;
-            case 'warn':
-                entry.style.color = '#ffcc00';
-                break;
-            case 'success':
-                entry.style.color = '#55ff55';
-                break;
-            default:
-                entry.style.color = '#0f0';
+        // Only show the debug panel if it's not been explicitly hidden
+        if (!debugPanelHidden) {
+            // Create a new log entry
+            const entry = document.createElement('div');
+            entry.style.borderBottom = '1px solid #333';
+            entry.style.padding = '3px 0';
+            
+            // Set color based on type
+            switch(type) {
+                case 'error':
+                    entry.style.color = '#ff5555';
+                    break;
+                case 'warn':
+                    entry.style.color = '#ffcc00';
+                    break;
+                case 'success':
+                    entry.style.color = '#55ff55';
+                    break;
+                default:
+                    entry.style.color = '#0f0';
+            }
+            
+            // Add timestamp
+            const time = new Date().toLocaleTimeString();
+            entry.textContent = `[${time}] ${message}`;
+            
+            // Add to debug content
+            debugContent.appendChild(entry);
+            
+            // Scroll to bottom
+            debugContent.scrollTop = debugContent.scrollHeight;
         }
-        
-        // Add timestamp
-        const time = new Date().toLocaleTimeString();
-        entry.textContent = `[${time}] ${message}`;
-        
-        // Add to debug content
-        debugContent.appendChild(entry);
-        
-        // Scroll to bottom
-        debugContent.scrollTop = debugContent.scrollHeight;
     }
 }
 
@@ -85,13 +88,25 @@ document.addEventListener('DOMContentLoaded', () => {
 function setupEventListeners() {
     debugLog("Setting up event listeners");
     
+    // Check and apply user's debug panel visibility preference
+    const debugPanel = document.getElementById('debugPanel');
+    if (debugPanel) {
+        const debugPanelHidden = localStorage.getItem('debugPanelHidden') === 'true';
+        if (debugPanelHidden) {
+            debugPanel.style.display = 'none';
+        }
+    }
+    
     // Add keyboard shortcut to toggle debug panel (Ctrl+D)
     document.addEventListener('keydown', function(e) {
         if (e.ctrlKey && e.key === 'd') {
             e.preventDefault();
             const debugPanel = document.getElementById('debugPanel');
             if (debugPanel) {
-                debugPanel.style.display = debugPanel.style.display === 'none' ? 'block' : 'none';
+                const isHidden = debugPanel.style.display === 'none';
+                debugPanel.style.display = isHidden ? 'block' : 'none';
+                // Store the preference
+                localStorage.setItem('debugPanelHidden', !isHidden);
                 debugLog("Debug panel toggled via keyboard shortcut");
             }
         }
@@ -1075,19 +1090,32 @@ function updateLayerSelector() {
 }
 
 function switchLayer(layerIndex) {
-    debugLog(`Switching to layer index: ${layerIndex}`);
-    currentLayerIndex = parseInt(layerIndex);
-    
-    // Update the layer name input placeholder to show current layer name
-    const layerNameInput = document.getElementById('layerNameInput');
-    if (layerNameInput && layers[currentLayerIndex]) {
-        layerNameInput.placeholder = `Rename: ${layers[currentLayerIndex].name}`;
+    if (!layers[layerIndex]) {
+        console.error(`Layer index ${layerIndex} does not exist`);
+        return;
     }
     
+    // Log the layer switch but don't force the debug panel to show
+    console.log(`Switching to layer ${layerIndex}: ${layers[layerIndex].name}`);
+    
+    // Update the current layer
+    currentLayerIndex = parseInt(layerIndex);
+    
+    // Update the layer name input placeholder to show current name
+    const layerNameInput = document.getElementById('layerNameInput');
+    if (layerNameInput) {
+        layerNameInput.placeholder = `Rename: ${layers[currentLayerIndex].name}`;
+        layerNameInput.value = '';  // Clear the input field
+    }
+    
+    // Update tabs display
     renderTabs();
+    
+    // Update the preview
     updatePreview();
-    saveToLocalStorage(); // Save when switching layers
-    debugLog(`Switched to layer: ${layers[currentLayerIndex].name}`, "success");
+    
+    // Save to localStorage
+    saveToLocalStorage();
 }
 
 function deleteLayer() {
@@ -1245,75 +1273,80 @@ function closeEditor() {
 }
 
 function applyCode() {
+    const htmlEditor = document.getElementById('htmlEditor');
+    const errorOutput = document.getElementById('errorOutput');
+    
+    if (!htmlEditor) {
+        console.error("HTML editor element not found");
+        return;
+    }
+    
     try {
-        debugLog("Applying code changes");
-        const htmlEditor = document.getElementById('htmlEditor');
-        if (!htmlEditor) {
-            debugLog("HTML editor element not found", "error");
-            return;
-        }
-        
-        const htmlContent = htmlEditor.value;
-        if (!htmlContent) {
-            debugLog("HTML content is empty", "warn");
-        }
-        
+        // Get the current tab
         const currentTab = getCurrentTab();
         if (!currentTab) {
-            debugLog("No current tab found", "error");
-            document.getElementById('errorOutput').style.display = 'block';
-            document.getElementById('errorOutput').textContent = "No active tab to apply code to";
-            return;
+            throw new Error("No current tab found");
         }
         
-        // Update the tab content
-        currentTab.content = htmlContent;
+        // Log the code application but don't force the debug panel to show
+        console.log(`Applying code to tab: ${currentTab.name}`);
+        
+        // Update the content
+        currentTab.content = htmlEditor.value;
         
         // Update the preview
         updatePreview();
         
-        // Close the editor
-        closeEditor();
-        
         // Save to localStorage
         saveToLocalStorage();
         
-        debugLog("Code applied successfully", "success");
+        // Close the editor
+        closeEditor();
+        
+        console.log("Code applied successfully");
     } catch (error) {
-        debugLog("Error applying code: " + error.message, "error");
-        document.getElementById('errorOutput').style.display = 'block';
-        document.getElementById('errorOutput').textContent = error.message;
+        console.error("Error applying code:", error);
+        
+        // Show error in the error output
+        if (errorOutput) {
+            errorOutput.textContent = error.message;
+            errorOutput.style.display = 'block';
+        }
     }
 }
 
 function updatePreview() {
-    try {
-        debugLog("Updating preview");
-        const preview = document.getElementById('preview');
-        if (!preview) {
-            debugLog("Preview iframe not found", "error");
-            return;
-        }
-        
-        const currentTab = getCurrentTab();
-        if (!currentTab) {
-            debugLog("No current tab found", "error");
-            return;
-        }
-        
-        // Set content to the iframe with proper error handling
-        try {
-            // Set content to the iframe
-            preview.srcdoc = currentTab.content;
-            debugLog("Preview updated successfully", "success");
-        } catch (error) {
-            debugLog("Error updating preview: " + error.message, "error");
-            // If there's an error, try to at least show something
-            preview.srcdoc = `<html><body><h1>Preview Error</h1><p>${error.message}</p></body></html>`;
-        }
-    } catch (error) {
-        debugLog("Fatal error in updatePreview: " + error.message, "error");
+    const currentTab = getCurrentTab();
+    if (!currentTab) {
+        console.error("No current tab found for preview update");
+        return;
     }
+    
+    // Log the preview update but don't force the debug panel to show
+    console.log(`Updating preview for tab: ${currentTab.name}`);
+    
+    // Get the iframe element
+    const preview = document.getElementById('preview');
+    if (!preview) {
+        console.error("Preview iframe not found");
+        return;
+    }
+    
+    // Write the content to the iframe
+    preview.srcdoc = currentTab.content;
+    
+    // Add a small delay to allow the iframe to load
+    setTimeout(() => {
+        // Apply any scripts from the parent to ensure they work
+        // (You might want to customize this based on your needs)
+        try {
+            const iframeDocument = preview.contentDocument || preview.contentWindow.document;
+            // Do any additional processing here if needed
+            console.log("Preview updated successfully");
+        } catch (error) {
+            console.error("Error accessing iframe document:", error);
+        }
+    }, 100);
 }
 
 // Clipboard Functions
