@@ -11,6 +11,22 @@ let tabs = [{
     js: ''
 }];
 
+// App state
+let currentLayerIndex = 0;
+let layers = [
+    {
+        name: "Layer 1",
+        tabs: [
+            {
+                id: "tab1",
+                name: "Untitled",
+                content: "<!DOCTYPE html>\n<html>\n<head>\n    <title>HTML Content</title>\n</head>\n<body>\n    <h1>Welcome to HTML Viewer</h1>\n    <p>Edit the code to see your changes in real-time!</p>\n</body>\n</html>"
+            }
+        ],
+        activeTabId: "tab1"
+    }
+];
+
 // Initialize the application
 document.addEventListener('DOMContentLoaded', () => {
     setupEditors();
@@ -18,6 +34,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setupConsoleOverride();
     updateTabs();
     runCode();
+    initApp();
 });
 
 // Set up the code editors using CodeMirror
@@ -803,4 +820,562 @@ window.addEventListener('load', () => {
     
     // Check for shared data
     checkForSharedData();
-}); 
+});
+
+function initApp() {
+    // Try to restore data from localStorage
+    restoreFromLocalStorage();
+    
+    // Initialize the tabs for the current layer
+    renderTabs();
+    updatePreview();
+    
+    // Check for data in URL hash (for shared snippets)
+    checkUrlForSharedData();
+    
+    // Set up auto-save to localStorage
+    setInterval(saveToLocalStorage, 5000);
+}
+
+// Layer Management Functions
+function addLayer() {
+    const layerNameInput = document.getElementById('layerNameInput');
+    const layerName = layerNameInput.value.trim() || `Layer ${layers.length + 1}`;
+    layerNameInput.value = '';
+    
+    layers.push({
+        name: layerName,
+        tabs: [
+            {
+                id: `layer${layers.length}_tab1`,
+                name: "Untitled",
+                content: "<!DOCTYPE html>\n<html>\n<head>\n    <title>HTML Content</title>\n</head>\n<body>\n    <h1>New Layer</h1>\n    <p>Start creating content in this layer!</p>\n</body>\n</html>"
+            }
+        ],
+        activeTabId: `layer${layers.length}_tab1`
+    });
+    
+    updateLayerSelector();
+    
+    // Switch to the new layer
+    currentLayerIndex = layers.length - 1;
+    document.getElementById('layerSelector').value = currentLayerIndex;
+    
+    renderTabs();
+    updatePreview();
+    saveToLocalStorage();
+}
+
+function updateLayerSelector() {
+    const selector = document.getElementById('layerSelector');
+    selector.innerHTML = '';
+    
+    layers.forEach((layer, index) => {
+        const option = document.createElement('option');
+        option.value = index;
+        option.textContent = layer.name;
+        selector.appendChild(option);
+    });
+}
+
+function switchLayer(layerIndex) {
+    currentLayerIndex = parseInt(layerIndex);
+    renderTabs();
+    updatePreview();
+}
+
+function deleteLayer() {
+    if (layers.length <= 1) {
+        alert("You cannot delete the only layer.");
+        return;
+    }
+    
+    if (confirm(`Are you sure you want to delete "${layers[currentLayerIndex].name}"?`)) {
+        layers.splice(currentLayerIndex, 1);
+        
+        if (currentLayerIndex >= layers.length) {
+            currentLayerIndex = layers.length - 1;
+        }
+        
+        updateLayerSelector();
+        document.getElementById('layerSelector').value = currentLayerIndex;
+        
+        renderTabs();
+        updatePreview();
+        saveToLocalStorage();
+    }
+}
+
+// Tab Management Functions
+function renderTabs() {
+    const tabsContainer = document.getElementById('tabsContainer');
+    tabsContainer.innerHTML = '';
+    
+    const currentLayer = layers[currentLayerIndex];
+    
+    currentLayer.tabs.forEach(tab => {
+        const tabElement = document.createElement('div');
+        tabElement.className = `tab ${tab.id === currentLayer.activeTabId ? 'active' : ''}`;
+        tabElement.setAttribute('data-tab-id', tab.id);
+        
+        const tabTitle = document.createElement('div');
+        tabTitle.className = 'tab-title';
+        tabTitle.textContent = tab.name;
+        
+        const tabClose = document.createElement('div');
+        tabClose.className = 'tab-close';
+        tabClose.innerHTML = '&times;';
+        tabClose.onclick = (e) => {
+            e.stopPropagation();
+            closeTab(tab.id);
+        };
+        
+        tabElement.appendChild(tabTitle);
+        
+        // Only add close button if there's more than one tab
+        if (currentLayer.tabs.length > 1) {
+            tabElement.appendChild(tabClose);
+        }
+        
+        tabElement.onclick = () => switchTab(tab.id);
+        
+        tabsContainer.appendChild(tabElement);
+    });
+    
+    // Add "New Tab" button
+    const newTabButton = document.createElement('div');
+    newTabButton.className = 'tab';
+    newTabButton.innerHTML = '+';
+    newTabButton.style.minWidth = '30px';
+    newTabButton.style.justifyContent = 'center';
+    newTabButton.onclick = addTab;
+    
+    tabsContainer.appendChild(newTabButton);
+}
+
+function getCurrentTab() {
+    const currentLayer = layers[currentLayerIndex];
+    return currentLayer.tabs.find(tab => tab.id === currentLayer.activeTabId);
+}
+
+function addTab() {
+    const currentLayer = layers[currentLayerIndex];
+    const newId = `layer${currentLayerIndex}_tab${Date.now()}`;
+    
+    currentLayer.tabs.push({
+        id: newId,
+        name: "Untitled",
+        content: "<!DOCTYPE html>\n<html>\n<head>\n    <title>HTML Content</title>\n</head>\n<body>\n    <h1>New Tab</h1>\n    <p>Start creating content in this tab!</p>\n</body>\n</html>"
+    });
+    
+    currentLayer.activeTabId = newId;
+    
+    renderTabs();
+    updatePreview();
+    saveToLocalStorage();
+}
+
+function closeTab(tabId) {
+    const currentLayer = layers[currentLayerIndex];
+    
+    if (currentLayer.tabs.length <= 1) {
+        alert("You cannot close the only tab.");
+        return;
+    }
+    
+    const tabIndex = currentLayer.tabs.findIndex(tab => tab.id === tabId);
+    currentLayer.tabs.splice(tabIndex, 1);
+    
+    // If the active tab was closed, activate another tab
+    if (currentLayer.activeTabId === tabId) {
+        currentLayer.activeTabId = currentLayer.tabs[0].id;
+    }
+    
+    renderTabs();
+    updatePreview();
+    saveToLocalStorage();
+}
+
+function switchTab(tabId) {
+    const currentLayer = layers[currentLayerIndex];
+    currentLayer.activeTabId = tabId;
+    
+    renderTabs();
+    updatePreview();
+    saveToLocalStorage();
+}
+
+function renameCurrentTab(newName) {
+    const currentTab = getCurrentTab();
+    currentTab.name = newName;
+    renderTabs();
+    saveToLocalStorage();
+}
+
+// Editor Functions
+function openEditor() {
+    const currentTab = getCurrentTab();
+    document.getElementById('htmlEditor').value = currentTab.content;
+    document.getElementById('editorPopup').style.display = 'flex';
+    document.getElementById('editorOverlay').style.display = 'block';
+    document.getElementById('errorOutput').style.display = 'none';
+}
+
+function closeEditor() {
+    document.getElementById('editorPopup').style.display = 'none';
+    document.getElementById('editorOverlay').style.display = 'none';
+}
+
+function applyCode() {
+    try {
+        const htmlContent = document.getElementById('htmlEditor').value;
+        const currentTab = getCurrentTab();
+        currentTab.content = htmlContent;
+        
+        updatePreview();
+        closeEditor();
+        saveToLocalStorage();
+    } catch (error) {
+        document.getElementById('errorOutput').style.display = 'block';
+        document.getElementById('errorOutput').textContent = error.message;
+    }
+}
+
+function updatePreview() {
+    const preview = document.getElementById('preview');
+    const currentTab = getCurrentTab();
+    
+    // Set content to the iframe
+    preview.srcdoc = currentTab.content;
+}
+
+// Clipboard Functions
+function copyToClipboard() {
+    const htmlEditor = document.getElementById('htmlEditor');
+    htmlEditor.select();
+    document.execCommand('copy');
+    
+    // Flash effect to indicate copy
+    const originalColor = htmlEditor.style.backgroundColor;
+    htmlEditor.style.backgroundColor = 'rgba(0, 255, 0, 0.2)';
+    setTimeout(() => {
+        htmlEditor.style.backgroundColor = originalColor;
+    }, 300);
+}
+
+async function pasteFromClipboard() {
+    try {
+        const text = await navigator.clipboard.readText();
+        document.getElementById('htmlEditor').value = text;
+    } catch (error) {
+        alert("Could not access clipboard. Use Ctrl+V instead.");
+    }
+}
+
+// Import/Export Functions
+function exportData() {
+    const dataToExport = {
+        layers: layers,
+        currentLayerIndex: currentLayerIndex
+    };
+    
+    const exportString = JSON.stringify(dataToExport);
+    
+    // Show the export modal
+    const modal = document.getElementById('importExportModal');
+    document.getElementById('modalTitle').textContent = 'Export Data';
+    document.getElementById('modalDescription').textContent = 'Copy the code below to save your layers and tabs:';
+    document.getElementById('importExportTextarea').value = exportString;
+    document.getElementById('confirmButton').textContent = 'Copy to Clipboard';
+    document.getElementById('confirmButton').onclick = copyExportedData;
+    
+    modal.style.display = 'block';
+}
+
+function copyExportedData() {
+    const textarea = document.getElementById('importExportTextarea');
+    textarea.select();
+    document.execCommand('copy');
+    
+    // Flash effect
+    textarea.style.backgroundColor = 'rgba(0, 255, 0, 0.2)';
+    setTimeout(() => {
+        textarea.style.backgroundColor = 'rgba(0, 0, 0, 0.3)';
+    }, 300);
+    
+    // Close modal
+    setTimeout(closeImportExportModal, 1000);
+}
+
+function openImportModal() {
+    const modal = document.getElementById('importExportModal');
+    document.getElementById('modalTitle').textContent = 'Import Data';
+    document.getElementById('modalDescription').textContent = 'Paste your exported data below:';
+    document.getElementById('importExportTextarea').value = '';
+    document.getElementById('confirmButton').textContent = 'Import';
+    document.getElementById('confirmButton').onclick = importData;
+    
+    modal.style.display = 'block';
+}
+
+function importData() {
+    try {
+        const importString = document.getElementById('importExportTextarea').value;
+        const importedData = JSON.parse(importString);
+        
+        if (importedData && importedData.layers && Array.isArray(importedData.layers)) {
+            layers = importedData.layers;
+            currentLayerIndex = importedData.currentLayerIndex || 0;
+            
+            if (currentLayerIndex >= layers.length) {
+                currentLayerIndex = 0;
+            }
+            
+            updateLayerSelector();
+            document.getElementById('layerSelector').value = currentLayerIndex;
+            
+            renderTabs();
+            updatePreview();
+            saveToLocalStorage();
+            
+            closeImportExportModal();
+        } else {
+            alert("Invalid import data format.");
+        }
+    } catch (error) {
+        alert("Error importing data: " + error.message);
+    }
+}
+
+function closeImportExportModal() {
+    document.getElementById('importExportModal').style.display = 'none';
+}
+
+// Local Storage Functions
+function saveToLocalStorage() {
+    try {
+        const dataToSave = {
+            layers: layers,
+            currentLayerIndex: currentLayerIndex
+        };
+        
+        localStorage.setItem('htmlLayerEditorData', JSON.stringify(dataToSave));
+    } catch (error) {
+        console.error("Error saving to localStorage:", error);
+    }
+}
+
+function restoreFromLocalStorage() {
+    try {
+        const savedData = localStorage.getItem('htmlLayerEditorData');
+        
+        if (savedData) {
+            const parsedData = JSON.parse(savedData);
+            
+            if (parsedData && parsedData.layers && Array.isArray(parsedData.layers)) {
+                layers = parsedData.layers;
+                currentLayerIndex = parsedData.currentLayerIndex || 0;
+                
+                if (currentLayerIndex >= layers.length) {
+                    currentLayerIndex = 0;
+                }
+                
+                updateLayerSelector();
+                document.getElementById('layerSelector').value = currentLayerIndex;
+            }
+        }
+    } catch (error) {
+        console.error("Error restoring from localStorage:", error);
+    }
+}
+
+// Share functionality via URL hash
+function checkUrlForSharedData() {
+    if (window.location.hash) {
+        try {
+            const hashData = window.location.hash.substring(1); // Remove the # character
+            const decodedData = decodeURIComponent(hashData);
+            const sharedData = JSON.parse(decodedData);
+            
+            if (confirm("Would you like to load the shared HTML content?")) {
+                // Create a new tab with the shared content
+                const currentLayer = layers[currentLayerIndex];
+                const newId = `layer${currentLayerIndex}_tab${Date.now()}`;
+                
+                currentLayer.tabs.push({
+                    id: newId,
+                    name: sharedData.name || "Shared Content",
+                    content: sharedData.content
+                });
+                
+                currentLayer.activeTabId = newId;
+                
+                renderTabs();
+                updatePreview();
+                saveToLocalStorage();
+                
+                // Remove the hash to prevent reloading on refresh
+                history.replaceState(null, document.title, window.location.pathname);
+            }
+        } catch (error) {
+            console.error("Error loading shared data:", error);
+        }
+    }
+}
+
+function shareCurrentTab() {
+    const currentTab = getCurrentTab();
+    
+    const shareData = {
+        name: currentTab.name,
+        content: currentTab.content
+    };
+    
+    const shareString = JSON.stringify(shareData);
+    const shareUrl = `${window.location.origin}${window.location.pathname}#${encodeURIComponent(shareString)}`;
+    
+    prompt("Share this link:", shareUrl);
+}
+
+// Server Integration Functions
+async function openSaveModal() {
+    const saveModal = document.getElementById('saveModal');
+    document.getElementById('snippetName').value = getCurrentTab().name;
+    document.getElementById('snippetDescription').value = '';
+    saveModal.style.display = 'block';
+}
+
+function closeSaveModal() {
+    document.getElementById('saveModal').style.display = 'none';
+}
+
+async function saveSnippet() {
+    const name = document.getElementById('snippetName').value.trim();
+    const description = document.getElementById('snippetDescription').value.trim();
+    const currentTab = getCurrentTab();
+    
+    if (!name) {
+        alert('Please enter a name for your snippet');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/snippets', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                name,
+                description,
+                content: currentTab.content,
+                type: 'html'
+            })
+        });
+        
+        if (response.ok) {
+            const result = await response.json();
+            closeSaveModal();
+            alert(`Snippet "${name}" saved successfully!`);
+            
+            // Update the name of the current tab
+            if (name !== currentTab.name) {
+                renameCurrentTab(name);
+            }
+        } else {
+            const error = await response.json();
+            throw new Error(error.message || 'Error saving snippet');
+        }
+    } catch (error) {
+        alert(`Failed to save snippet: ${error.message}`);
+    }
+}
+
+async function openLoadModal() {
+    const loadModal = document.getElementById('loadModal');
+    const snippetsList = document.getElementById('snippetsList');
+    snippetsList.innerHTML = '<p>Loading snippets...</p>';
+    
+    loadModal.style.display = 'block';
+    
+    try {
+        const response = await fetch('/api/snippets');
+        
+        if (response.ok) {
+            const snippets = await response.json();
+            renderSnippetsList(snippets);
+        } else {
+            throw new Error('Failed to fetch snippets');
+        }
+    } catch (error) {
+        snippetsList.innerHTML = `<p>Error loading snippets: ${error.message}</p>`;
+    }
+}
+
+function closeLoadModal() {
+    document.getElementById('loadModal').style.display = 'none';
+}
+
+function renderSnippetsList(snippets) {
+    const snippetsList = document.getElementById('snippetsList');
+    
+    if (!snippets || snippets.length === 0) {
+        snippetsList.innerHTML = '<p>No snippets found</p>';
+        return;
+    }
+    
+    snippetsList.innerHTML = '';
+    
+    snippets.forEach(snippet => {
+        const snippetItem = document.createElement('div');
+        snippetItem.className = 'snippet-item';
+        snippetItem.onclick = () => loadSnippet(snippet._id);
+        
+        const snippetTitle = document.createElement('h3');
+        snippetTitle.textContent = snippet.name;
+        
+        const snippetDesc = document.createElement('p');
+        snippetDesc.textContent = snippet.description || 'No description';
+        
+        const snippetDate = document.createElement('div');
+        snippetDate.className = 'snippet-item-date';
+        snippetDate.textContent = new Date(snippet.createdAt).toLocaleDateString();
+        
+        snippetItem.appendChild(snippetTitle);
+        snippetItem.appendChild(snippetDesc);
+        snippetItem.appendChild(snippetDate);
+        
+        snippetsList.appendChild(snippetItem);
+    });
+}
+
+async function loadSnippet(id) {
+    try {
+        const response = await fetch(`/api/snippets/${id}`);
+        
+        if (response.ok) {
+            const snippet = await response.json();
+            
+            // Create a new tab with the loaded content
+            const currentLayer = layers[currentLayerIndex];
+            const newId = `layer${currentLayerIndex}_tab${Date.now()}`;
+            
+            currentLayer.tabs.push({
+                id: newId,
+                name: snippet.name,
+                content: snippet.content
+            });
+            
+            currentLayer.activeTabId = newId;
+            
+            renderTabs();
+            updatePreview();
+            saveToLocalStorage();
+            closeLoadModal();
+        } else {
+            throw new Error('Failed to load snippet');
+        }
+    } catch (error) {
+        alert(`Failed to load snippet: ${error.message}`);
+    }
+} 

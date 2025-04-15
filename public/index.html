@@ -3,196 +3,539 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ultimate HTML Viewer & Playground</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.9/codemirror.min.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.9/theme/monokai.min.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <link rel="stylesheet" href="/styles.css">
+    <title>Layered Code Editor</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            margin: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(to bottom, #000428, #004e92);
+            color: #fff;
+            overflow: hidden;
+        }
+
+        #layerControls {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            background: #111;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+            z-index: 10;
+        }
+
+        /* Browser-like tabs */
+        #tabsContainer {
+            display: flex;
+            overflow-x: auto;
+            margin-right: auto; /* Push tabs to the left */
+            max-width: 70%;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255, 255, 255, 0.3) rgba(0, 0, 0, 0.2);
+        }
+
+        #tabsContainer::-webkit-scrollbar {
+            height: 5px;
+        }
+
+        #tabsContainer::-webkit-scrollbar-thumb {
+            background-color: rgba(255, 255, 255, 0.3);
+            border-radius: 5px;
+        }
+
+        #tabsContainer::-webkit-scrollbar-track {
+            background-color: rgba(0, 0, 0, 0.2);
+        }
+
+        .tab {
+            display: flex;
+            align-items: center;
+            padding: 8px 15px;
+            margin-right: 5px;
+            background: rgba(60, 60, 70, 0.5);
+            border-radius: 8px 8px 0 0;
+            cursor: pointer;
+            min-width: 100px;
+            max-width: 200px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            transition: background 0.2s ease;
+        }
+
+        .tab.active {
+            background: rgba(0, 120, 180, 0.7);
+        }
+
+        .tab:hover {
+            background: rgba(80, 80, 90, 0.8);
+        }
+
+        .tab.active:hover {
+            background: rgba(0, 140, 210, 0.8);
+        }
+
+        .tab-title {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .tab-close {
+            margin-left: 8px;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.2);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 12px;
+            transition: all 0.2s ease;
+        }
+
+        .tab-close:hover {
+            background: rgba(255, 50, 50, 0.8);
+        }
+
+        #layerControls button, #layerControls select {
+            margin-right: 10px;
+            padding: 8px 16px;
+            border: none;
+            background-color: transparent;
+            color: #fff;
+            font-size: 16px;
+            cursor: pointer;
+            overflow: hidden;
+            transition: transform 0.3s ease, filter 0.3s ease;
+        }
+
+        .import-export-button {
+            padding: 6px 10px;
+            margin-left: 5px;
+            margin-right: 10px;
+            font-size: 14px;
+            background-color: #555;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            transition: all 0.3s ease;
+        }
+
+        .import-export-button span {
+            font-size: 18px;
+            margin-right: 4px;
+        }
+
+        .import-export-button:hover {
+            background-color: #777;
+        }
+
+        #editCodeBtn {
+            background: rgba(0, 180, 180, 0.8);
+            color: white;
+            border-radius: 5px;
+            margin-left: 5px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+        
+        #editCodeBtn:hover {
+            background: rgba(0, 200, 200, 1);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+        }
+
+        #layerControls button:before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 50%;
+            width: 200%;
+            height: 100%;
+            background: linear-gradient(to right, #24402e, #072e0e);
+            mix-blend-mode: overlay;
+            z-index: -1;
+            transition: transform 0.3s ease;
+            transform: translateX(-50%) scaleX(0);
+        }
+
+        #layerControls button:hover:before {
+            transform: translateX(-50%) scaleX(1);
+        }
+
+        #layerControls button:hover {
+            filter: brightness(0.8) contrast(1.2) hue-rotate(90deg);
+        }
+
+        #layerControls button:active {
+            transform: scale(0.95);
+        }
+
+        #layerControls select {
+            color: black;
+            background: white;
+            font-size: 16px;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            padding: 8px 12px;
+            width: 100px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            outline: none;
+            margin: 5px;
+        }
+
+        #layerControls select:hover {
+            border-color: #999;
+        }
+
+        #layerControls select:focus {
+            border-color: #666;
+        }
+
+        #layerSelector {
+            width: 120px;
+            height: 50px;
+            font-size: 14px;
+        }
+        
+        #layerSelector option {
+            font-size: 14px;
+        }
+
+        #previewContainer {
+            flex: 1;
+            display: flex;
+            position: relative;
+            width: 100%;
+            height: calc(100vh - 70px);
+            overflow: hidden;
+        }
+
+        #preview {
+            flex: 1;
+            border: none;
+            width: 100%;
+            height: 100%;
+            background-color: #fff;
+        }
+
+        #editorPopup {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80%;
+            max-width: 800px;
+            max-height: 80vh;
+            background: rgba(0, 0, 0, 0.9);
+            border-radius: 20px;
+            box-shadow: 0 0 30px rgba(0, 255, 255, 0.7);
+            z-index: 1000;
+            display: none;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        #editorHeader {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 20px;
+            background: rgba(0, 0, 0, 0.7);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        #htmlEditor {
+            flex: 1;
+            border: none;
+            resize: none;
+            overflow: auto;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 20px;
+            color: #0f0;
+            font-family: 'Courier New', monospace;
+            font-size: 16px;
+            height: 100%;
+            min-height: 300px;
+        }
+
+        #editorActions {
+            display: flex;
+            justify-content: flex-end;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.7);
+        }
+
+        #errorOutput {
+            background: rgba(255, 255, 255, 0.1);
+            color: #ff4444;
+            padding: 10px 20px;
+            border-radius: 0;
+            margin: 0;
+            display: none;
+        }
+        
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 999;
+            display: none;
+        }
+
+        /* Import/Export modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            overflow: auto;
+        }
+
+        .modal-content {
+            background-color: rgba(30, 30, 30, 0.95);
+            margin: 10% auto;
+            padding: 20px;
+            border: 1px solid #444;
+            width: 80%;
+            max-width: 600px;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+        }
+
+        .modal h2 {
+            color: #fff;
+            margin-top: 0;
+        }
+
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .close:hover {
+            color: #fff;
+        }
+
+        #importExportTextarea {
+            width: 100%;
+            height: 200px;
+            background-color: rgba(0, 0, 0, 0.3);
+            color: #0f0;
+            border: 1px solid #555;
+            border-radius: 5px;
+            padding: 10px;
+            font-family: 'Courier New', monospace;
+            resize: vertical;
+            margin: 10px 0;
+        }
+
+        .modal-buttons {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .modal-buttons button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .confirm-button {
+            background-color: #4CAF50;
+            color: white;
+        }
+
+        .confirm-button:hover {
+            background-color: #45a049;
+        }
+
+        .cancel-button {
+            background-color: #f44336;
+            color: white;
+        }
+
+        .cancel-button:hover {
+            background-color: #d32f2f;
+        }
+
+        /* Save/Load server functionality */
+        #serverActionsMenu {
+            display: flex;
+            margin-left: 10px;
+        }
+
+        #serverActionsMenu button {
+            background: rgba(60, 60, 70, 0.5);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 6px 10px;
+            margin-right: 5px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        #serverActionsMenu button:hover {
+            background: rgba(80, 80, 90, 0.8);
+        }
+
+        #saveModal, #loadModal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            overflow: auto;
+        }
+
+        .snippets-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .snippet-item {
+            background: rgba(40, 40, 50, 0.8);
+            border-radius: 5px;
+            padding: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .snippet-item:hover {
+            background: rgba(60, 60, 80, 0.8);
+            transform: translateY(-2px);
+        }
+
+        .snippet-item h3 {
+            margin: 0 0 5px 0;
+            color: #fff;
+            font-size: 16px;
+        }
+
+        .snippet-item-date {
+            font-size: 12px;
+            color: #aaa;
+            margin-top: 5px;
+        }
+    </style>
 </head>
 <body>
-    <div id="app">
-        <header>
-            <div class="logo">
-                <i class="fas fa-code"></i> 
-                <span>HTML Playground</span>
-            </div>
-            <div id="tabsContainer"></div>
-            <div class="toolbar">
-                <button id="newTabBtn" title="Create New Tab"><i class="fas fa-plus"></i></button>
-                <button id="saveBtn" title="Save Snippet"><i class="fas fa-save"></i></button>
-                <button id="loadBtn" title="Load Snippet"><i class="fas fa-folder-open"></i></button>
-                <button id="shareBtn" title="Share Snippet"><i class="fas fa-share-alt"></i></button>
-                <button id="settingsBtn" title="Settings"><i class="fas fa-cog"></i></button>
-            </div>
-        </header>
+    <div id="layerControls">
+        <div id="tabsContainer">
+            <!-- Tabs will be dynamically added here -->
+        </div>
 
-        <main>
-            <div id="editor-panel">
-                <div class="panel-tabs">
-                    <button class="panel-tab active" data-tab="html">HTML</button>
-                    <button class="panel-tab" data-tab="css">CSS</button>
-                    <button class="panel-tab" data-tab="js">JavaScript</button>
-                    <button class="panel-tab" data-tab="console">Console</button>
-                </div>
-                <div class="panel-content">
-                    <div class="editor-container active" id="html-editor"></div>
-                    <div class="editor-container" id="css-editor"></div>
-                    <div class="editor-container" id="js-editor"></div>
-                    <div class="editor-container" id="console-output">
-                        <div class="console-controls">
-                            <button id="clearConsoleBtn"><i class="fas fa-trash"></i> Clear</button>
-                        </div>
-                        <div id="console-log"></div>
-                    </div>
-                </div>
-            </div>
+        <button class="import-export-button" onclick="exportData()"><span>⬇</span> Export</button>
+        <button class="import-export-button" onclick="openImportModal()"><span>⬆</span> Import</button>
+        <input type="text" id="layerNameInput" placeholder="Enter Layer Name" style="margin-left: 10px; width: 100px;">
+        <select id="layerSelector" onchange="switchLayer(this.value)" style="width: 100px; height: 20px; font-size: 14px;">
+            <option value="0">Layer 1</option>
+        </select>
+        <button onclick="addLayer()">Add Layer</button>
+        <button onclick="deleteLayer()">Delete Layer</button>
+        <button id="editCodeBtn" onclick="openEditor()">Edit Code</button>
 
-            <div class="resizer" id="horizontal-resizer"></div>
-            
-            <div id="preview-panel">
-                <div class="preview-toolbar">
-                    <div class="device-selector">
-                        <button class="device-button active" data-device="desktop"><i class="fas fa-desktop"></i></button>
-                        <button class="device-button" data-device="tablet"><i class="fas fa-tablet-alt"></i></button>
-                        <button class="device-button" data-device="mobile"><i class="fas fa-mobile-alt"></i></button>
-                    </div>
-                    <div class="preview-controls">
-                        <button id="runBtn" title="Run Code"><i class="fas fa-play"></i> Run</button>
-                        <button id="autoRunToggle" title="Toggle Auto-run">
-                            <i class="fas fa-bolt"></i> <span>Auto-run</span>
-                        </button>
-                    </div>
-                </div>
-                <div class="preview-container">
-                    <iframe id="preview-iframe" sandbox="allow-scripts allow-same-origin allow-modals allow-popups allow-forms"></iframe>
-                </div>
-            </div>
-        </main>
+        <!-- Server actions menu -->
+        <div id="serverActionsMenu">
+            <button onclick="openSaveModal()">Save to Server</button>
+            <button onclick="openLoadModal()">Load from Server</button>
+        </div>
+    </div>
+    
+    <div id="previewContainer">
+        <iframe id="preview"></iframe>
+    </div>
+    
+    <div class="overlay" id="editorOverlay" onclick="closeEditor()"></div>
+    
+    <div id="editorPopup">
+        <div id="editorHeader">
+            <h3 style="margin: 0;">HTML Editor</h3>
+            <button onclick="closeEditor()">✕</button>
+        </div>
+        <div id="errorOutput"></div>
+        <textarea id="htmlEditor" placeholder="Enter your HTML code here..."></textarea>
+        <div id="editorActions">
+            <button onclick="copyToClipboard()">Copy</button>
+            <button onclick="pasteFromClipboard()">Paste</button>
+            <button onclick="applyCode()">Apply Code</button>
+        </div>
     </div>
 
-    <!-- Modals -->
-    <div class="modal" id="saveModal">
+    <!-- Import/Export Modal -->
+    <div id="importExportModal" class="modal">
         <div class="modal-content">
-            <div class="modal-header">
-                <h2>Save Snippet</h2>
-                <button class="close-btn">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div class="form-group">
-                    <label for="snippetName">Snippet Name</label>
-                    <input type="text" id="snippetName" placeholder="Enter a name for your snippet">
-                </div>
-                <div class="form-group">
-                    <label for="snippetDescription">Description (optional)</label>
-                    <textarea id="snippetDescription" placeholder="Enter a description for your snippet"></textarea>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn cancel-btn">Cancel</button>
-                <button class="btn save-btn">Save</button>
+            <span class="close" onclick="closeImportExportModal()">&times;</span>
+            <h2 id="modalTitle">Import Data</h2>
+            <p id="modalDescription">Paste the exported data below to import your layers and tabs.</p>
+            <textarea id="importExportTextarea" placeholder="Paste your exported data here..."></textarea>
+            <div class="modal-buttons">
+                <button class="cancel-button" onclick="closeImportExportModal()">Cancel</button>
+                <button id="confirmButton" class="confirm-button" onclick="importData()">Import</button>
             </div>
         </div>
     </div>
 
-    <div class="modal" id="loadModal">
+    <!-- Save Modal -->
+    <div id="saveModal" class="modal">
         <div class="modal-content">
-            <div class="modal-header">
-                <h2>Load Snippet</h2>
-                <button class="close-btn">&times;</button>
+            <span class="close" onclick="closeSaveModal()">&times;</span>
+            <h2>Save to Server</h2>
+            <p>Save your current layer to the server for later use.</p>
+            <div>
+                <label for="snippetName">Name</label>
+                <input type="text" id="snippetName" placeholder="Enter a name for your snippet" style="width: 100%; padding: 8px; margin: 10px 0; background: rgba(0,0,0,0.3); color: white; border: 1px solid #555; border-radius: 4px;">
+                
+                <label for="snippetDescription">Description (optional)</label>
+                <textarea id="snippetDescription" placeholder="Enter a description" style="width: 100%; height: 80px; padding: 8px; margin: 10px 0; background: rgba(0,0,0,0.3); color: white; border: 1px solid #555; border-radius: 4px;"></textarea>
             </div>
-            <div class="modal-body">
-                <div class="snippets-list"></div>
+            <div class="modal-buttons">
+                <button class="cancel-button" onclick="closeSaveModal()">Cancel</button>
+                <button class="confirm-button" onclick="saveSnippet()">Save</button>
             </div>
         </div>
     </div>
 
-    <div class="modal" id="shareModal">
+    <!-- Load Modal -->
+    <div id="loadModal" class="modal">
         <div class="modal-content">
-            <div class="modal-header">
-                <h2>Share Snippet</h2>
-                <button class="close-btn">&times;</button>
+            <span class="close" onclick="closeLoadModal()">&times;</span>
+            <h2>Load from Server</h2>
+            <p>Select a snippet to load from the server.</p>
+            <div class="snippets-list" id="snippetsList">
+                <!-- Snippets will be dynamically added here -->
             </div>
-            <div class="modal-body">
-                <div class="form-group">
-                    <label for="shareLink">Share Link</label>
-                    <div class="share-link-container">
-                        <input type="text" id="shareLink" readonly>
-                        <button id="copyLinkBtn"><i class="fas fa-copy"></i></button>
-                    </div>
-                </div>
-                <div class="share-options">
-                    <button class="btn" id="shareTwitterBtn"><i class="fab fa-twitter"></i> Twitter</button>
-                    <button class="btn" id="shareFacebookBtn"><i class="fab fa-facebook"></i> Facebook</button>
-                    <button class="btn" id="shareEmailBtn"><i class="fas fa-envelope"></i> Email</button>
-                </div>
+            <div class="modal-buttons">
+                <button class="cancel-button" onclick="closeLoadModal()">Cancel</button>
             </div>
         </div>
     </div>
 
-    <div class="modal" id="settingsModal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>Settings</h2>
-                <button class="close-btn">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div class="form-group">
-                    <label for="themeSelect">Editor Theme</label>
-                    <select id="themeSelect">
-                        <option value="monokai">Monokai</option>
-                        <option value="dracula">Dracula</option>
-                        <option value="material">Material</option>
-                        <option value="nord">Nord</option>
-                        <option value="solarized">Solarized</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="fontSizeSelect">Font Size</label>
-                    <select id="fontSizeSelect">
-                        <option value="12">12px</option>
-                        <option value="14" selected>14px</option>
-                        <option value="16">16px</option>
-                        <option value="18">18px</option>
-                        <option value="20">20px</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>Editor Options</label>
-                    <div class="checkbox-group">
-                        <label>
-                            <input type="checkbox" id="lintingCheckbox" checked>
-                            Enable Linting
-                        </label>
-                        <label>
-                            <input type="checkbox" id="autoCloseBracketsCheckbox" checked>
-                            Auto-close Brackets
-                        </label>
-                        <label>
-                            <input type="checkbox" id="lineNumbersCheckbox" checked>
-                            Show Line Numbers
-                        </label>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn cancel-btn">Cancel</button>
-                <button class="btn save-btn">Save Settings</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Scripts -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.9/codemirror.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.9/mode/htmlmixed/htmlmixed.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.9/mode/css/css.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.9/mode/javascript/javascript.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.9/addon/edit/closebrackets.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.9/addon/edit/closetag.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.9/addon/lint/lint.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.9/addon/hint/show-hint.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.9/addon/hint/html-hint.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.9/addon/hint/css-hint.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.9/addon/hint/javascript-hint.min.js"></script>
     <script src="/app.js"></script>
 </body>
 </html> 
