@@ -768,59 +768,229 @@ function setupResizablePanels() {
 
 // Check for shared data in the URL
 function checkForSharedData() {
-    const urlParams = new URLSearchParams(window.location.search);
-    const data = urlParams.get('data');
-    
-    if (data) {
+    if (window.location.hash) {
         try {
-            const decodedData = JSON.parse(decodeURIComponent(data));
+            const hashData = window.location.hash.substring(1); // Remove the # character
+            const decodedData = decodeURIComponent(hashData);
+            const sharedData = JSON.parse(decodedData);
             
-            // Create a new tab for the shared data
-            const tabId = `tab-${Date.now()}`;
-            tabs.push({
-                id: tabId,
-                name: 'Shared Snippet',
-                html: decodedData.html || '',
-                css: decodedData.css || '',
-                js: decodedData.js || ''
-            });
-            
-            switchToTab(tabId);
-            updateTabs();
-            runCode();
-            
-            // Remove the data from the URL
-            window.history.replaceState({}, document.title, window.location.pathname);
+            if (confirm("Would you like to load the shared HTML content?")) {
+                // Create a new tab with the shared content
+                const currentLayer = layers[currentLayerIndex];
+                const newId = `layer${currentLayerIndex}_tab${Date.now()}`;
+                
+                currentLayer.tabs.push({
+                    id: newId,
+                    name: sharedData.name || "Shared Content",
+                    content: sharedData.content
+                });
+                
+                currentLayer.activeTabId = newId;
+                
+                renderTabs();
+                updatePreview();
+                saveToLocalStorage();
+                
+                // Remove the hash to prevent reloading on refresh
+                history.replaceState(null, document.title, window.location.pathname);
+            }
         } catch (error) {
-            console.error('Error parsing shared data:', error);
+            console.error("Error loading shared data:", error);
         }
     }
 }
 
-// Debounce function to limit how often a function is called
-function debounce(func, wait) {
-    let timeout;
-    return function executedFunction(...args) {
-        const later = () => {
-            clearTimeout(timeout);
-            func(...args);
-        };
-        clearTimeout(timeout);
-        timeout = setTimeout(later, wait);
+function shareCurrentTab() {
+    const currentTab = getCurrentTab();
+    
+    const shareData = {
+        name: currentTab.name,
+        content: currentTab.content
     };
+    
+    const shareString = JSON.stringify(shareData);
+    const shareUrl = `${window.location.origin}${window.location.pathname}#${encodeURIComponent(shareString)}`;
+    
+    prompt("Share this link:", shareUrl);
 }
 
-// Initialize the app
-window.addEventListener('load', () => {
-    // Apply settings if available
-    const settings = JSON.parse(localStorage.getItem('htmlViewerSettings'));
-    if (settings) {
-        applySettings(settings);
+// Server-side storage functions
+function openSaveToServerModal() {
+    const modal = document.getElementById('saveToServerModal');
+    const saveNameInput = document.getElementById('saveName');
+    
+    // Generate a default name
+    const defaultName = `HTML Layers ${new Date().toLocaleDateString()}`;
+    saveNameInput.value = defaultName;
+    
+    modal.style.display = 'block';
+}
+
+function closeSaveToServerModal() {
+    document.getElementById('saveToServerModal').style.display = 'none';
+}
+
+async function saveLayersToServer() {
+    try {
+        const saveName = document.getElementById('saveName').value.trim();
+        
+        if (!saveName) {
+            alert('Please enter a name for your save file');
+            return;
+        }
+        
+        // Prepare the data to save
+        const layersData = {
+            layers: layers,
+            currentLayerIndex: currentLayerIndex,
+            savedAt: new Date().toISOString()
+        };
+        
+        // Call the server API
+        const response = await fetch('/api/layers', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                layersData,
+                name: saveName
+            })
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Failed to save to server');
+        }
+        
+        const result = await response.json();
+        closeSaveToServerModal();
+        alert(`Saved successfully to server as "${saveName}"`);
+    } catch (error) {
+        alert(`Error saving to server: ${error.message}`);
+    }
+}
+
+function openLoadFromServerModal() {
+    const modal = document.getElementById('loadFromServerModal');
+    modal.style.display = 'block';
+    loadSavedFilesList();
+}
+
+function closeLoadFromServerModal() {
+    document.getElementById('loadFromServerModal').style.display = 'none';
+}
+
+async function loadSavedFilesList() {
+    const filesList = document.getElementById('savedFilesList');
+    filesList.innerHTML = '<p>Loading saved files...</p>';
+    
+    try {
+        const response = await fetch('/api/layers');
+        
+        if (!response.ok) {
+            throw new Error('Failed to fetch saved files');
+        }
+        
+        const savedFiles = await response.json();
+        
+        if (savedFiles.length === 0) {
+            filesList.innerHTML = '<p>No saved files found</p>';
+            return;
+        }
+        
+        filesList.innerHTML = '';
+        
+        savedFiles.forEach(file => {
+            const fileItem = document.createElement('div');
+            fileItem.className = 'saved-file-item';
+            fileItem.onclick = () => loadLayersFromServer(file.filename);
+            
+            const fileName = document.createElement('h3');
+            fileName.textContent = file.name;
+            
+            const fileDate = document.createElement('div');
+            fileDate.className = 'saved-file-date';
+            fileDate.textContent = new Date(file.lastModified).toLocaleString();
+            
+            fileItem.appendChild(fileName);
+            fileItem.appendChild(fileDate);
+            
+            filesList.appendChild(fileItem);
+        });
+    } catch (error) {
+        filesList.innerHTML = `<p>Error loading saved files: ${error.message}</p>`;
+    }
+}
+
+async function loadLayersFromServer(filename) {
+    try {
+        const response = await fetch(`/api/layers/${filename}`);
+        
+        if (!response.ok) {
+            throw new Error('Failed to load file from server');
+        }
+        
+        const data = await response.json();
+        
+        if (data && data.layers && Array.isArray(data.layers)) {
+            // Confirm before loading
+            if (confirm('Are you sure you want to load this file? Your current work will be replaced.')) {
+                // Load the layers data
+                layers = data.layers;
+                currentLayerIndex = data.currentLayerIndex || 0;
+                
+                // Update UI
+                updateLayerSelector();
+                renderTabs();
+                updatePreview();
+                
+                // Also save to localStorage as a backup
+                saveToLocalStorage();
+                
+                closeLoadFromServerModal();
+                alert('Successfully loaded from server');
+            }
+        } else {
+            throw new Error('Invalid file format');
+        }
+    } catch (error) {
+        alert(`Error loading from server: ${error.message}`);
+    }
+}
+
+// Auto-save setup - Improved
+function setupAutoSave() {
+    // Set up MutationObserver to detect changes in the DOM
+    const observer = new MutationObserver(() => {
+        saveToLocalStorage();
+    });
+    
+    // Observe the entire document for changes that might affect state
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        characterData: true
+    });
+    
+    // Listen for layer and tab changes
+    const layerSelector = document.getElementById('layerSelector');
+    if (layerSelector) {
+        layerSelector.addEventListener('change', () => saveToLocalStorage());
     }
     
-    // Check for shared data
-    checkForSharedData();
-});
+    // Also set up interval saving as a backup
+    setInterval(saveToLocalStorage, 3000);
+    
+    // Listen for editor changes
+    const htmlEditor = document.getElementById('htmlEditor');
+    if (htmlEditor) {
+        htmlEditor.addEventListener('input', () => saveToLocalStorage());
+    }
+    
+    console.log("Enhanced auto-save functionality enabled with server backup");
+}
 
 function initApp() {
     setupEditors();
@@ -1209,83 +1379,31 @@ function restoreFromLocalStorage() {
     }
 }
 
-// Share functionality via URL hash
-function checkUrlForSharedData() {
-    if (window.location.hash) {
-        try {
-            const hashData = window.location.hash.substring(1); // Remove the # character
-            const decodedData = decodeURIComponent(hashData);
-            const sharedData = JSON.parse(decodedData);
-            
-            if (confirm("Would you like to load the shared HTML content?")) {
-                // Create a new tab with the shared content
-                const currentLayer = layers[currentLayerIndex];
-                const newId = `layer${currentLayerIndex}_tab${Date.now()}`;
-                
-                currentLayer.tabs.push({
-                    id: newId,
-                    name: sharedData.name || "Shared Content",
-                    content: sharedData.content
-                });
-                
-                currentLayer.activeTabId = newId;
-                
-                renderTabs();
-                updatePreview();
-                saveToLocalStorage();
-                
-                // Remove the hash to prevent reloading on refresh
-                history.replaceState(null, document.title, window.location.pathname);
-            }
-        } catch (error) {
-            console.error("Error loading shared data:", error);
-        }
-    }
-}
-
-function shareCurrentTab() {
-    const currentTab = getCurrentTab();
-    
-    const shareData = {
-        name: currentTab.name,
-        content: currentTab.content
+// Utility functions
+// Debounce function to limit how often a function is called
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
     };
-    
-    const shareString = JSON.stringify(shareData);
-    const shareUrl = `${window.location.origin}${window.location.pathname}#${encodeURIComponent(shareString)}`;
-    
-    prompt("Share this link:", shareUrl);
 }
 
-// Auto-save setup - Improved
-function setupAutoSave() {
-    // Set up MutationObserver to detect changes in the DOM
-    const observer = new MutationObserver(() => {
-        saveToLocalStorage();
-    });
-    
-    // Observe the entire document for changes that might affect state
-    observer.observe(document.body, {
-        childList: true,
-        subtree: true,
-        attributes: true,
-        characterData: true
-    });
-    
-    // Listen for layer and tab changes
-    const layerSelector = document.getElementById('layerSelector');
-    if (layerSelector) {
-        layerSelector.addEventListener('change', () => saveToLocalStorage());
+// Initialize the app on window load
+window.addEventListener('load', () => {
+    // Apply settings if available
+    const settings = JSON.parse(localStorage.getItem('htmlViewerSettings'));
+    if (settings) {
+        applySettings(settings);
     }
     
-    // Also set up interval saving as a backup
-    setInterval(saveToLocalStorage, 3000);
+    // Check for shared data
+    checkUrlForSharedData();
     
-    // Listen for editor changes
-    const htmlEditor = document.getElementById('htmlEditor');
-    if (htmlEditor) {
-        htmlEditor.addEventListener('input', () => saveToLocalStorage());
-    }
-    
-    console.log("Enhanced auto-save functionality enabled");
-} 
+    // Initialize the app
+    initApp();
+}); 

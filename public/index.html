@@ -392,11 +392,12 @@
             padding: 6px 10px;
             margin-right: 5px;
             cursor: pointer;
-            transition: background 0.2s;
+            transition: background 0.2s, transform 0.2s;
         }
 
         #serverActionsMenu button:hover {
             background: rgba(80, 80, 90, 0.8);
+            transform: translateY(-2px);
         }
 
         #saveModal, #loadModal {
@@ -442,6 +443,66 @@
             color: #aaa;
             margin-top: 5px;
         }
+        
+        /* Server actions styling */
+        #serverActionsMenu button {
+            background: rgba(60, 60, 70, 0.5);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 6px 10px;
+            margin-right: 5px;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.2s;
+        }
+        
+        #serverActionsMenu button:hover {
+            background: rgba(80, 80, 90, 0.8);
+            transform: translateY(-2px);
+        }
+        
+        .saved-files-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 10px;
+            margin-top: 15px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .saved-file-item {
+            background: rgba(40, 40, 50, 0.8);
+            border-radius: 5px;
+            padding: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .saved-file-item:hover {
+            background: rgba(60, 60, 80, 0.8);
+            transform: translateY(-2px);
+        }
+        
+        .saved-file-item h3 {
+            margin: 0 0 5px 0;
+            color: #fff;
+            font-size: 16px;
+        }
+        
+        .saved-file-date {
+            font-size: 12px;
+            color: #aaa;
+            margin-top: 5px;
+        }
+        
+        .refresh-button {
+            background-color: #4285f4;
+            color: white;
+        }
+        
+        .refresh-button:hover {
+            background-color: #366ac1;
+        }
     </style>
 </head>
 <body>
@@ -459,6 +520,12 @@
         <button onclick="addLayer()">Add Layer</button>
         <button onclick="deleteLayer()">Delete Layer</button>
         <button id="editCodeBtn" onclick="openEditor()">Edit Code</button>
+        
+        <!-- Server actions menu -->
+        <div id="serverActionsMenu" style="display: flex; margin-left: 10px;">
+            <button onclick="openSaveToServerModal()">Save to Server</button>
+            <button onclick="openLoadFromServerModal()">Load from Server</button>
+        </div>
     </div>
     
     <div id="previewContainer">
@@ -491,6 +558,40 @@
             <div class="modal-buttons">
                 <button class="cancel-button" onclick="closeImportExportModal()">Cancel</button>
                 <button id="confirmButton" class="confirm-button" onclick="importData()">Import</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Save to Server Modal -->
+    <div id="saveToServerModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeSaveToServerModal()">&times;</span>
+            <h2>Save to Server</h2>
+            <p>Save your current layers to the server for later use.</p>
+            <div>
+                <label for="saveName">Name</label>
+                <input type="text" id="saveName" placeholder="Enter a name for your save file" style="width: 100%; padding: 8px; margin: 10px 0; background: rgba(0,0,0,0.3); color: white; border: 1px solid #555; border-radius: 4px;">
+            </div>
+            <div class="modal-buttons">
+                <button class="cancel-button" onclick="closeSaveToServerModal()">Cancel</button>
+                <button class="confirm-button" onclick="saveLayersToServer()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Load from Server Modal -->
+    <div id="loadFromServerModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeLoadFromServerModal()">&times;</span>
+            <h2>Load from Server</h2>
+            <p>Select a saved file to load from the server.</p>
+            <div class="saved-files-list" id="savedFilesList">
+                <!-- Saved files will be listed here -->
+                <p>Loading saved files...</p>
+            </div>
+            <div class="modal-buttons">
+                <button class="cancel-button" onclick="closeLoadFromServerModal()">Cancel</button>
+                <button class="refresh-button" onclick="loadSavedFilesList()">Refresh List</button>
             </div>
         </div>
     </div>
