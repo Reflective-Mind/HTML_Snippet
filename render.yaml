@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: mbti-render
+    env: node
+    buildCommand: |
+      npm install
+    startCommand: node server.js
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: MONGODB_URI
+        value: mongodb+srv://keneide91:3N6L1x0jeIhVX5wP@mbti-insights.s3vrf.mongodb.net/?retryWrites=true&w=majority&appName=mbti-insights
+        sync: false
+      - key: JWT_SECRET
+        value: cd06a943f7e3a56b2f7c8836736c0d6f2e3b58f9c742a563
+        sync: false
+      - key: MISTRAL_API_KEY
+        value: pjTVzQVIZyYNzWj7mjm5aysVYippTADy
+        sync: false
+      - key: NODE_ENV
+        value: production
+      - key: REACT_APP_API_URL
+        value: https://mbti-render.onrender.com
+      - key: REACT_APP_SOCKET_URL
+        value: https://mbti-render.onrender.com
+    healthCheckPath: /api/health
+    autoDeploy: true 
