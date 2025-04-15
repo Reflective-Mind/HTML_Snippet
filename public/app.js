@@ -827,17 +827,13 @@ function initApp() {
     setupEventListeners();
     setupResizablePanels();
     
-    // Restore data from localStorage
+    // Immediately try to restore from localStorage
     restoreFromLocalStorage();
     
-    // Set up auto-save
+    // Setup the enhanced auto-save features
     setupAutoSave();
-    setupEditorChangeListeners();
     
-    // Check for shared data in URL
-    checkUrlForSharedData();
-    
-    // Set up initial tab and layer
+    // Setup other event listeners and UI components
     if (layers[currentLayerIndex].tabs.length === 0) {
         addTab();
     }
@@ -845,7 +841,10 @@ function initApp() {
     renderTabs();
     updatePreview();
     
-    console.log("Application initialized with browser storage");
+    // Manual save to ensure initial state is preserved
+    saveToLocalStorage();
+    
+    console.log("Application initialized with enhanced browser storage");
 }
 
 // Layer Management Functions
@@ -874,7 +873,7 @@ function addLayer() {
     
     renderTabs();
     updatePreview();
-    saveToLocalStorage();
+    saveToLocalStorage(); // Ensure the new layer is saved immediately
 }
 
 function updateLayerSelector() {
@@ -893,6 +892,7 @@ function switchLayer(layerIndex) {
     currentLayerIndex = parseInt(layerIndex);
     renderTabs();
     updatePreview();
+    saveToLocalStorage(); // Save when switching layers
 }
 
 function deleteLayer() {
@@ -913,7 +913,7 @@ function deleteLayer() {
         
         renderTabs();
         updatePreview();
-        saveToLocalStorage();
+        saveToLocalStorage(); // Save after deletion
     }
 }
 
@@ -983,7 +983,7 @@ function addTab() {
     
     renderTabs();
     updatePreview();
-    saveToLocalStorage();
+    saveToLocalStorage(); // Ensure immediate save
 }
 
 function closeTab(tabId) {
@@ -1004,7 +1004,7 @@ function closeTab(tabId) {
     
     renderTabs();
     updatePreview();
-    saveToLocalStorage();
+    saveToLocalStorage(); // Ensure immediate save
 }
 
 function switchTab(tabId) {
@@ -1013,14 +1013,14 @@ function switchTab(tabId) {
     
     renderTabs();
     updatePreview();
-    saveToLocalStorage();
+    saveToLocalStorage(); // Ensure immediate save
 }
 
 function renameCurrentTab(newName) {
     const currentTab = getCurrentTab();
     currentTab.name = newName;
     renderTabs();
-    saveToLocalStorage();
+    saveToLocalStorage(); // Ensure immediate save
 }
 
 // Editor Functions
@@ -1045,6 +1045,8 @@ function applyCode() {
         
         updatePreview();
         closeEditor();
+        
+        // Explicitly save changes to localStorage
         saveToLocalStorage();
     } catch (error) {
         document.getElementById('errorOutput').style.display = 'block';
@@ -1193,7 +1195,13 @@ function restoreFromLocalStorage() {
                 }
                 
                 updateLayerSelector();
-                document.getElementById('layerSelector').value = currentLayerIndex;
+                
+                // Make sure the UI reflects the loaded data
+                if (document.getElementById('layerSelector')) {
+                    document.getElementById('layerSelector').value = currentLayerIndex;
+                }
+                
+                console.log("Successfully restored data from localStorage");
             }
         }
     } catch (error) {
@@ -1249,38 +1257,35 @@ function shareCurrentTab() {
     prompt("Share this link:", shareUrl);
 }
 
-// Auto-save setup
+// Auto-save setup - Improved
 function setupAutoSave() {
     // Set up MutationObserver to detect changes in the DOM
     const observer = new MutationObserver(() => {
         saveToLocalStorage();
     });
     
-    // Start observing the preview container
-    observer.observe(document.getElementById('previewContainer'), {
+    // Observe the entire document for changes that might affect state
+    observer.observe(document.body, {
         childList: true,
         subtree: true,
-        attributes: true
+        attributes: true,
+        characterData: true
     });
+    
+    // Listen for layer and tab changes
+    const layerSelector = document.getElementById('layerSelector');
+    if (layerSelector) {
+        layerSelector.addEventListener('change', () => saveToLocalStorage());
+    }
     
     // Also set up interval saving as a backup
-    setInterval(saveToLocalStorage, 5000);
+    setInterval(saveToLocalStorage, 3000);
     
-    console.log("Auto-save functionality enabled");
-}
-
-// Event listeners for editor changes
-function setupEditorChangeListeners() {
+    // Listen for editor changes
     const htmlEditor = document.getElementById('htmlEditor');
+    if (htmlEditor) {
+        htmlEditor.addEventListener('input', () => saveToLocalStorage());
+    }
     
-    htmlEditor.addEventListener('input', () => {
-        saveToLocalStorage();
-    });
-    
-    // Set up applyCode to save to localStorage
-    const originalApplyCode = applyCode;
-    applyCode = function() {
-        originalApplyCode();
-        saveToLocalStorage();
-    };
+    console.log("Enhanced auto-save functionality enabled");
 } 
