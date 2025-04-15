@@ -1155,16 +1155,37 @@ function renderTabs() {
         const tabTitle = document.createElement('div');
         tabTitle.className = 'tab-title';
         tabTitle.textContent = tab.name;
+        tabTitle.title = "Double-click to rename"; // Add tooltip
+        
+        // Add double-click event for inline renaming
+        tabTitle.ondblclick = (e) => {
+            e.stopPropagation();
+            promptRenameTab(tab.id);
+        };
+        
+        // Create rename button
+        const tabRename = document.createElement('div');
+        tabRename.className = 'tab-rename';
+        tabRename.innerHTML = '✎'; // Pencil icon
+        tabRename.title = "Rename tab";
+        tabRename.onclick = (e) => {
+            e.stopPropagation();
+            promptRenameTab(tab.id);
+        };
         
         const tabClose = document.createElement('div');
         tabClose.className = 'tab-close';
         tabClose.innerHTML = '&times;';
+        tabClose.title = "Close tab";
         tabClose.onclick = (e) => {
             e.stopPropagation();
             closeTab(tab.id);
         };
         
         tabElement.appendChild(tabTitle);
+        
+        // Add rename button
+        tabElement.appendChild(tabRename);
         
         // Only add close button if there's more than one tab
         if (currentLayer.tabs.length > 1) {
@@ -1196,10 +1217,14 @@ function addTab() {
     const currentLayer = layers[currentLayerIndex];
     const newId = `layer${currentLayerIndex}_tab${Date.now()}`;
     
+    // Prompt for a tab name immediately
+    const tabName = prompt("Enter a name for the new tab:", "Untitled");
+    const validTabName = tabName && tabName.trim() !== '' ? tabName.trim() : "Untitled";
+    
     currentLayer.tabs.push({
         id: newId,
-        name: "Untitled",
-        content: "<!DOCTYPE html>\n<html>\n<head>\n    <title>HTML Content</title>\n</head>\n<body>\n    <h1>New Tab</h1>\n    <p>Start creating content in this tab!</p>\n</body>\n</html>"
+        name: validTabName,
+        content: "<!DOCTYPE html>\n<html>\n<head>\n    <title>" + validTabName + "</title>\n</head>\n<body>\n    <h1>" + validTabName + "</h1>\n    <p>Start creating content in this tab!</p>\n</body>\n</html>"
     });
     
     currentLayer.activeTabId = newId;
@@ -1624,4 +1649,24 @@ window.addEventListener('load', () => {
     
     // Initialize the app
     initApp();
-}); 
+});
+
+// Add this new function for tab renaming
+function promptRenameTab(tabId) {
+    const currentLayer = layers[currentLayerIndex];
+    const tab = currentLayer.tabs.find(tab => tab.id === tabId);
+    
+    if (!tab) {
+        console.error("Tab not found for renaming");
+        return;
+    }
+    
+    const newName = prompt("Enter a new name for this tab:", tab.name);
+    
+    if (newName !== null && newName.trim() !== '') {
+        tab.name = newName.trim();
+        renderTabs();
+        saveToLocalStorage(); // Save the renamed tab
+        console.log(`Tab renamed to: ${newName}`);
+    }
+} 
