@@ -137,6 +137,50 @@ function setupEventListeners() {
         debugLog("Layer selector not found", "warn");
     }
     
+    // Add event listener for the layer name input (enter key to rename)
+    const layerNameInput = document.getElementById('layerNameInput');
+    if (layerNameInput) {
+        layerNameInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                renameCurrentLayer();
+            }
+        });
+        
+        // Set the placeholder to show the current layer name
+        if (layers && layers[currentLayerIndex]) {
+            layerNameInput.placeholder = `Rename: ${layers[currentLayerIndex].name}`;
+        }
+        
+        debugLog("Layer name input listener attached");
+    }
+    
+    // Add event listeners for layer buttons
+    const addLayerBtn = document.querySelector('button[onclick="addLayer()"]');
+    if (addLayerBtn) {
+        addLayerBtn.onclick = null; // Remove inline handler
+        addLayerBtn.addEventListener('click', addLayer);
+        debugLog("Add layer button listener attached");
+    }
+    
+    const deleteLayerBtn = document.querySelector('button[onclick="deleteLayer()"]');
+    if (deleteLayerBtn) {
+        deleteLayerBtn.onclick = null; // Remove inline handler
+        deleteLayerBtn.addEventListener('click', deleteLayer);
+        debugLog("Delete layer button listener attached");
+    }
+    
+    // Add Rename Layer button next to Add Layer
+    const renameLayerBtn = document.createElement('button');
+    renameLayerBtn.textContent = 'Rename Layer';
+    renameLayerBtn.addEventListener('click', renameCurrentLayer);
+    
+    // Insert after the Add Layer button
+    if (addLayerBtn && addLayerBtn.parentNode) {
+        addLayerBtn.parentNode.insertBefore(renameLayerBtn, addLayerBtn.nextSibling);
+        debugLog("Rename layer button added");
+    }
+    
     // Add event listeners for modals
     const closeButtons = document.querySelectorAll('.close');
     if (closeButtons.length > 0) {
@@ -170,21 +214,6 @@ function setupEventListeners() {
         debugLog("Editor overlay listener attached");
     } else {
         debugLog("Editor overlay not found", "warn");
-    }
-    
-    // Also attach click handlers for adding/deleting layers
-    const addLayerBtn = document.querySelector('button[onclick="addLayer()"]');
-    if (addLayerBtn) {
-        addLayerBtn.onclick = null;
-        addLayerBtn.addEventListener('click', addLayer);
-        debugLog("Add layer button listener attached");
-    }
-    
-    const deleteLayerBtn = document.querySelector('button[onclick="deleteLayer()"]');
-    if (deleteLayerBtn) {
-        deleteLayerBtn.onclick = null;
-        deleteLayerBtn.addEventListener('click', deleteLayer);
-        debugLog("Delete layer button listener attached");
     }
     
     debugLog("All event listeners set up", "success");
@@ -981,6 +1010,8 @@ function addLayer() {
     const layerName = layerNameInput.value.trim() || `Layer ${layers.length + 1}`;
     layerNameInput.value = '';
     
+    debugLog(`Adding new layer: ${layerName}`);
+    
     layers.push({
         name: layerName,
         tabs: [
@@ -1002,6 +1033,33 @@ function addLayer() {
     renderTabs();
     updatePreview();
     saveToLocalStorage(); // Ensure the new layer is saved immediately
+    debugLog(`Layer "${layerName}" added successfully`, "success");
+}
+
+// Add this new function to rename the current layer
+function renameCurrentLayer() {
+    const layerNameInput = document.getElementById('layerNameInput');
+    const newName = layerNameInput.value.trim();
+    
+    if (!newName) {
+        debugLog("Layer name cannot be empty", "warn");
+        return;
+    }
+    
+    debugLog(`Renaming current layer to: ${newName}`);
+    
+    // Update the current layer's name
+    layers[currentLayerIndex].name = newName;
+    
+    // Clear the input field
+    layerNameInput.value = '';
+    
+    // Update the UI
+    updateLayerSelector();
+    document.getElementById('layerSelector').value = currentLayerIndex;
+    
+    saveToLocalStorage();
+    debugLog(`Layer renamed to "${newName}" successfully`, "success");
 }
 
 function updateLayerSelector() {
@@ -1017,10 +1075,19 @@ function updateLayerSelector() {
 }
 
 function switchLayer(layerIndex) {
+    debugLog(`Switching to layer index: ${layerIndex}`);
     currentLayerIndex = parseInt(layerIndex);
+    
+    // Update the layer name input placeholder to show current layer name
+    const layerNameInput = document.getElementById('layerNameInput');
+    if (layerNameInput && layers[currentLayerIndex]) {
+        layerNameInput.placeholder = `Rename: ${layers[currentLayerIndex].name}`;
+    }
+    
     renderTabs();
     updatePreview();
     saveToLocalStorage(); // Save when switching layers
+    debugLog(`Switched to layer: ${layers[currentLayerIndex].name}`, "success");
 }
 
 function deleteLayer() {
@@ -1328,38 +1395,114 @@ function importData() {
             return;
         }
         
-        const importedData = JSON.parse(importString);
-        
-        if (importedData && importedData.layers && Array.isArray(importedData.layers)) {
-            debugLog("Valid layer data found, importing...");
-            layers = importedData.layers;
-            currentLayerIndex = importedData.currentLayerIndex || 0;
-            
-            if (currentLayerIndex >= layers.length) {
-                currentLayerIndex = 0;
-            }
-            
-            updateLayerSelector();
-            
-            // Make sure the UI reflects the loaded data
-            const layerSelector = document.getElementById('layerSelector');
-            if (layerSelector) {
-                layerSelector.value = currentLayerIndex;
-                debugLog("Updated layer selector to index " + currentLayerIndex);
-            }
-            
-            renderTabs();
-            updatePreview();
-            saveToLocalStorage();
-            
-            closeImportExportModal();
-            debugLog("Import completed successfully", "success");
-        } else {
-            debugLog("Invalid import data format", "error");
-            alert("Invalid import data format. The data must contain layers array.");
+        // Parse the JSON data
+        let importedData;
+        try {
+            importedData = JSON.parse(importString);
+            debugLog("JSON data parsed successfully");
+        } catch (parseError) {
+            debugLog("Failed to parse JSON: " + parseError.message, "error");
+            alert("Error parsing JSON data: " + parseError.message);
+            return;
         }
+        
+        // Validate the imported data structure
+        if (!importedData) {
+            debugLog("Imported data is null or undefined", "error");
+            alert("Invalid import data: Data is empty");
+            return;
+        }
+        
+        // Check if it's the expected format with layers
+        if (!importedData.layers) {
+            debugLog("Imported data missing layers property", "error");
+            
+            // Handle possible legacy format
+            if (Array.isArray(importedData)) {
+                debugLog("Legacy array format detected, attempting conversion");
+                importedData = { layers: importedData, currentLayerIndex: 0 };
+            } else {
+                alert("Invalid import data format: Missing layers array");
+                return;
+            }
+        }
+        
+        // Ensure layers is an array
+        if (!Array.isArray(importedData.layers)) {
+            debugLog("Layers property is not an array", "error");
+            alert("Invalid import data format: Layers is not an array");
+            return;
+        }
+        
+        // Ensure the array is not empty
+        if (importedData.layers.length === 0) {
+            debugLog("Layers array is empty", "error");
+            alert("Invalid import data: No layers found");
+            return;
+        }
+        
+        // Validate each layer has the required properties
+        for (let i = 0; i < importedData.layers.length; i++) {
+            const layer = importedData.layers[i];
+            
+            if (!layer.name) {
+                debugLog(`Layer at index ${i} missing name property`, "warn");
+                layer.name = `Layer ${i + 1}`;
+            }
+            
+            if (!Array.isArray(layer.tabs)) {
+                debugLog(`Layer at index ${i} has invalid tabs property`, "warn");
+                layer.tabs = [{
+                    id: `layer${i}_tab1`,
+                    name: "Untitled",
+                    content: "<!DOCTYPE html>\n<html>\n<head>\n    <title>HTML Content</title>\n</head>\n<body>\n    <h1>Imported Layer</h1>\n    <p>This layer was imported but had invalid tab data.</p>\n</body>\n</html>"
+                }];
+            } else if (layer.tabs.length === 0) {
+                debugLog(`Layer at index ${i} has empty tabs array`, "warn");
+                layer.tabs.push({
+                    id: `layer${i}_tab1`,
+                    name: "Untitled",
+                    content: "<!DOCTYPE html>\n<html>\n<head>\n    <title>HTML Content</title>\n</head>\n<body>\n    <h1>Imported Layer</h1>\n    <p>This layer was imported but had no tabs.</p>\n</body>\n</html>"
+                });
+            }
+            
+            // Ensure each layer has an activeTabId set
+            if (!layer.activeTabId || !layer.tabs.find(tab => tab.id === layer.activeTabId)) {
+                debugLog(`Layer at index ${i} has invalid activeTabId`, "warn");
+                layer.activeTabId = layer.tabs[0].id;
+            }
+        }
+        
+        // Everything validated, apply the import
+        debugLog("Valid data found, importing...");
+        layers = importedData.layers;
+        currentLayerIndex = importedData.currentLayerIndex || 0;
+        
+        // Ensure currentLayerIndex is valid
+        if (currentLayerIndex >= layers.length) {
+            debugLog("Imported currentLayerIndex out of bounds, resetting to 0", "warn");
+            currentLayerIndex = 0;
+        }
+        
+        // Update UI
+        updateLayerSelector();
+        
+        // Make sure the UI reflects the loaded data
+        const layerSelector = document.getElementById('layerSelector');
+        if (layerSelector) {
+            layerSelector.value = currentLayerIndex;
+            debugLog("Updated layer selector to index " + currentLayerIndex);
+        }
+        
+        renderTabs();
+        updatePreview();
+        saveToLocalStorage();
+        
+        closeImportExportModal();
+        debugLog("Import completed successfully", "success");
+        alert("Data imported successfully!");
     } catch (error) {
-        debugLog("Import error: " + error.message, "error");
+        debugLog("Unhandled import error: " + error.message, "error");
         alert("Error importing data: " + error.message);
     }
 }
