@@ -1631,8 +1631,15 @@ function updatePreview() {
                 // Open document for writing
                 iframeDocument.open();
                 
+                // Validate content before writing to prevent white screen
+                let contentToWrite = currentTab.content;
+                if (!contentToWrite || contentToWrite.trim() === '') {
+                    console.warn("Tab content is empty, using default content");
+                    contentToWrite = "<!DOCTYPE html><html><head><title>Empty Content</title></head><body><p>No content in this tab.</p></body></html>";
+                }
+                
                 // Write HTML content - document.write() automatically executes scripts
-                iframeDocument.write(currentTab.content);
+                iframeDocument.write(contentToWrite);
                 
                 // Close document to trigger rendering
                 iframeDocument.close();
