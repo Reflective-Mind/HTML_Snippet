@@ -539,6 +539,7 @@
         <button onclick="addLayer()">Add Layer</button>
         <button onclick="deleteLayer()">Delete Layer</button>
         <button id="editCodeBtn" onclick="openEditor()">Edit Code</button>
+        <button id="fullscreenBtn" onclick="toggleFullscreen()" title="Toggle Fullscreen (F11)">⛶ Fullscreen</button>
         
         <!-- Server actions menu -->
         <div id="serverActionsMenu" style="display: flex; margin-left: 10px;">
@@ -548,7 +549,13 @@
     </div>
     
     <div id="previewContainer">
-        <iframe id="preview"></iframe>
+        <iframe 
+            id="preview" 
+            allow="fullscreen; web-share; camera; microphone; geolocation; autoplay; encrypted-media; picture-in-picture"
+            allowfullscreen
+            sandbox="allow-scripts allow-same-origin allow-modals allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation allow-downloads"
+            style="width: 100%; height: 100%; border: none; background: #fff;">
+        </iframe>
     </div>
 
     <!-- Add debug panel -->

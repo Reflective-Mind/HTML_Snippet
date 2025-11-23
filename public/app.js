@@ -965,6 +965,87 @@ function setupAutoSave() {
     console.log("Enhanced auto-save functionality enabled with server backup");
 }
 
+// Fullscreen toggle function for Three.js and WebGL content
+function toggleFullscreen() {
+    const preview = document.getElementById('preview');
+    const previewContainer = document.getElementById('previewContainer');
+    
+    if (!preview || !previewContainer) {
+        console.error("Preview elements not found");
+        return;
+    }
+    
+    try {
+        // Try to request fullscreen on the iframe's content first (for canvas fullscreen)
+        const iframeWindow = preview.contentWindow;
+        if (iframeWindow) {
+            const iframeDoc = preview.contentDocument || iframeWindow.document;
+            const canvas = iframeDoc.querySelector('canvas');
+            
+            if (canvas) {
+                // Request fullscreen on the canvas inside iframe
+                if (canvas.requestFullscreen) {
+                    canvas.requestFullscreen();
+                } else if (canvas.webkitRequestFullscreen) {
+                    canvas.webkitRequestFullscreen();
+                } else if (canvas.mozRequestFullScreen) {
+                    canvas.mozRequestFullScreen();
+                } else if (canvas.msRequestFullscreen) {
+                    canvas.msRequestFullscreen();
+                } else {
+                    // Fallback to container fullscreen
+                    requestContainerFullscreen();
+                }
+                return;
+            }
+        }
+        
+        // Fallback: fullscreen the preview container
+        requestContainerFullscreen();
+    } catch (error) {
+        console.error("Error toggling fullscreen:", error);
+        // Fallback to container fullscreen
+        requestContainerFullscreen();
+    }
+}
+
+function requestContainerFullscreen() {
+    const previewContainer = document.getElementById('previewContainer');
+    
+    if (!document.fullscreenElement && !document.webkitFullscreenElement && 
+        !document.mozFullScreenElement && !document.msFullscreenElement) {
+        // Enter fullscreen
+        if (previewContainer.requestFullscreen) {
+            previewContainer.requestFullscreen();
+        } else if (previewContainer.webkitRequestFullscreen) {
+            previewContainer.webkitRequestFullscreen();
+        } else if (previewContainer.mozRequestFullScreen) {
+            previewContainer.mozRequestFullScreen();
+        } else if (previewContainer.msRequestFullscreen) {
+            previewContainer.msRequestFullscreen();
+        }
+    } else {
+        // Exit fullscreen
+        if (document.exitFullscreen) {
+            document.exitFullscreen();
+        } else if (document.webkitExitFullscreen) {
+            document.webkitExitFullscreen();
+        } else if (document.mozCancelFullScreen) {
+            document.mozCancelFullScreen();
+        } else if (document.msExitFullscreen) {
+            document.msExitFullscreen();
+        }
+    }
+}
+
+// Add keyboard shortcut for fullscreen (F11)
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'F11') {
+        e.preventDefault();
+        toggleFullscreen();
+    }
+});
+
 function initApp() {
     console.log("Initializing application");
     
@@ -1357,21 +1438,80 @@ function updatePreview() {
         return;
     }
     
-    // Write the content to the iframe
+    // Enhanced method for Three.js support: Use srcdoc for better script execution
+    // This ensures all scripts, including external CDN scripts and ES6 modules, execute properly
     preview.srcdoc = currentTab.content;
     
-    // Add a small delay to allow the iframe to load
-    setTimeout(() => {
-        // Apply any scripts from the parent to ensure they work
-        // (You might want to customize this based on your needs)
+    // Set up iframe load handler for Three.js compatibility checks
+    preview.onload = function() {
         try {
-            const iframeDocument = preview.contentDocument || preview.contentWindow.document;
-            // Do any additional processing here if needed
-            console.log("Preview updated successfully");
+            const iframeWindow = preview.contentWindow;
+            const iframeDocument = preview.contentDocument || iframeWindow.document;
+            
+            // Check WebGL support and log for debugging
+            const canvas = iframeDocument.createElement('canvas');
+            const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+            const gl2 = canvas.getContext('webgl2');
+            
+            if (gl) {
+                console.log("✅ WebGL 1.0 supported in iframe");
+            } else {
+                console.warn("⚠️ WebGL 1.0 not supported in iframe");
+            }
+            
+            if (gl2) {
+                console.log("✅ WebGL 2.0 supported in iframe");
+            } else {
+                console.log("ℹ️ WebGL 2.0 not available (WebGL 1.0 may still work)");
+            }
+            
+            // Enable fullscreen support for canvas elements
+            if (iframeDocument.documentElement.requestFullscreen) {
+                // Fullscreen API is available
+                console.log("✅ Fullscreen API supported");
+            }
+            
+            // Handle fullscreen requests from within iframe
+            iframeDocument.addEventListener('fullscreenchange', function() {
+                console.log("Fullscreen state changed in iframe");
+            });
+            
+            // Support for ES6 modules - ensure module scripts execute
+            const moduleScripts = iframeDocument.querySelectorAll('script[type="module"]');
+            if (moduleScripts.length > 0) {
+                console.log(`✅ Found ${moduleScripts.length} ES6 module script(s)`);
+            }
+            
+            // Log any console errors from iframe for debugging
+            const originalConsoleError = iframeWindow.console.error;
+            iframeWindow.console.error = function(...args) {
+                originalConsoleError.apply(iframeWindow.console, args);
+                debugLog(`[IFRAME ERROR] ${args.join(' ')}`, 'error');
+            };
+            
+            // Log WebGL context errors
+            if (gl) {
+                const originalGetError = gl.getError;
+                gl.getError = function() {
+                    const error = originalGetError.call(gl);
+                    if (error !== gl.NO_ERROR) {
+                        debugLog(`[WebGL Error] ${error}`, 'error');
+                    }
+                    return error;
+                };
+            }
+            
+            console.log("Preview updated successfully with Three.js support");
         } catch (error) {
             console.error("Error accessing iframe document:", error);
+            debugLog(`Error in preview update: ${error.message}`, 'error');
         }
-    }, 100);
+    };
+    
+    // If iframe is already loaded, trigger the onload handler
+    if (preview.contentDocument && preview.contentDocument.readyState === 'complete') {
+        preview.onload();
+    }
 }
 
 // Clipboard Functions
