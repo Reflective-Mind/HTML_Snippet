@@ -1438,79 +1438,155 @@ function updatePreview() {
         return;
     }
     
-    // Enhanced method for Three.js support: Use srcdoc for better script execution
-    // This ensures all scripts, including external CDN scripts and ES6 modules, execute properly
-    preview.srcdoc = currentTab.content;
-    
-    // Set up iframe load handler for Three.js compatibility checks
-    preview.onload = function() {
-        try {
-            const iframeWindow = preview.contentWindow;
-            const iframeDocument = preview.contentDocument || iframeWindow.document;
-            
-            // Check WebGL support and log for debugging
-            const canvas = iframeDocument.createElement('canvas');
-            const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-            const gl2 = canvas.getContext('webgl2');
-            
-            if (gl) {
-                console.log("✅ WebGL 1.0 supported in iframe");
-            } else {
-                console.warn("⚠️ WebGL 1.0 not supported in iframe");
-            }
-            
-            if (gl2) {
-                console.log("✅ WebGL 2.0 supported in iframe");
-            } else {
-                console.log("ℹ️ WebGL 2.0 not available (WebGL 1.0 may still work)");
-            }
-            
-            // Enable fullscreen support for canvas elements
-            if (iframeDocument.documentElement.requestFullscreen) {
-                // Fullscreen API is available
-                console.log("✅ Fullscreen API supported");
-            }
-            
-            // Handle fullscreen requests from within iframe
-            iframeDocument.addEventListener('fullscreenchange', function() {
-                console.log("Fullscreen state changed in iframe");
-            });
-            
-            // Support for ES6 modules - ensure module scripts execute
-            const moduleScripts = iframeDocument.querySelectorAll('script[type="module"]');
-            if (moduleScripts.length > 0) {
-                console.log(`✅ Found ${moduleScripts.length} ES6 module script(s)`);
-            }
-            
-            // Log any console errors from iframe for debugging
-            const originalConsoleError = iframeWindow.console.error;
-            iframeWindow.console.error = function(...args) {
-                originalConsoleError.apply(iframeWindow.console, args);
-                debugLog(`[IFRAME ERROR] ${args.join(' ')}`, 'error');
-            };
-            
-            // Log WebGL context errors
-            if (gl) {
-                const originalGetError = gl.getError;
-                gl.getError = function() {
-                    const error = originalGetError.call(gl);
-                    if (error !== gl.NO_ERROR) {
-                        debugLog(`[WebGL Error] ${error}`, 'error');
-                    }
-                    return error;
-                };
-            }
-            
-            console.log("Preview updated successfully with Three.js support");
-        } catch (error) {
-            console.error("Error accessing iframe document:", error);
-            debugLog(`Error in preview update: ${error.message}`, 'error');
+    // CRITICAL FIX: Use document.write() instead of srcdoc for Three.js support
+    // srcdoc creates an "about:srcdoc" origin which blocks external CDN scripts
+    // Writing directly to the iframe document allows external scripts to load properly
+    try {
+        // First, ensure iframe is in a clean state by setting src to about:blank
+        // This ensures we can write to it properly
+        if (!preview.contentDocument || preview.contentDocument.readyState === 'loading') {
+            preview.src = 'about:blank';
         }
-    };
-    
-    // If iframe is already loaded, trigger the onload handler
-    if (preview.contentDocument && preview.contentDocument.readyState === 'complete') {
-        preview.onload();
+        
+        // Wait for iframe to be ready, then write content
+        const writeContent = () => {
+            try {
+                const iframeWindow = preview.contentWindow;
+                const iframeDocument = preview.contentDocument || iframeWindow.document;
+                
+                // Open the document for writing (this clears existing content)
+                iframeDocument.open();
+                
+                // Write the HTML content directly
+                iframeDocument.write(currentTab.content);
+                
+                // Close the document to trigger rendering
+                iframeDocument.close();
+                
+                // Return true to indicate success
+                return true;
+            } catch (writeError) {
+                console.error("Error writing to iframe:", writeError);
+                // Fallback to srcdoc if document.write fails
+                console.warn("Falling back to srcdoc method");
+                preview.srcdoc = currentTab.content;
+                return false;
+            }
+        };
+        
+        // If iframe is ready, write immediately, otherwise wait
+        if (preview.contentDocument && preview.contentDocument.readyState === 'complete') {
+            writeContent();
+            // Set up checkWebGL after content is written
+            setTimeout(() => {
+                const iframeWindow = preview.contentWindow;
+                if (iframeWindow && iframeWindow.document) {
+                    checkWebGL();
+                }
+            }, 100);
+        } else {
+            // Combine writeContent and checkWebGL in onload handler
+            preview.onload = function() {
+                writeContent();
+                // Wait for scripts to load before checking
+                setTimeout(checkWebGL, 300);
+            };
+            if (preview.contentDocument && preview.contentDocument.readyState === 'interactive') {
+                writeContent();
+                setTimeout(checkWebGL, 300);
+            }
+        }
+        
+        // Wait for the iframe to fully load before checking WebGL
+        const checkWebGL = () => {
+            try {
+                const iframeWindow = preview.contentWindow;
+                const iframeDocument = preview.contentDocument || iframeWindow.document;
+                
+                // Check WebGL support and log for debugging
+                const canvas = iframeDocument.createElement('canvas');
+                const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+                const gl2 = canvas.getContext('webgl2');
+                
+                if (gl) {
+                    console.log("✅ WebGL 1.0 supported in iframe");
+                } else {
+                    console.warn("⚠️ WebGL 1.0 not supported in iframe");
+                }
+                
+                if (gl2) {
+                    console.log("✅ WebGL 2.0 supported in iframe");
+                } else {
+                    console.log("ℹ️ WebGL 2.0 not available (WebGL 1.0 may still work)");
+                }
+                
+                // Enable fullscreen support for canvas elements
+                if (iframeDocument.documentElement.requestFullscreen) {
+                    console.log("✅ Fullscreen API supported");
+                }
+                
+                // Handle fullscreen requests from within iframe
+                iframeDocument.addEventListener('fullscreenchange', function() {
+                    console.log("Fullscreen state changed in iframe");
+                });
+                
+                // Support for ES6 modules - ensure module scripts execute
+                const moduleScripts = iframeDocument.querySelectorAll('script[type="module"]');
+                if (moduleScripts.length > 0) {
+                    console.log(`✅ Found ${moduleScripts.length} ES6 module script(s)`);
+                }
+                
+                // Check if Three.js loaded successfully
+                if (iframeWindow.THREE) {
+                    console.log("✅ Three.js library loaded successfully!");
+                    console.log("Three.js version:", iframeWindow.THREE.REVISION || "unknown");
+                } else {
+                    // Wait a bit more for external scripts to load
+                    setTimeout(() => {
+                        if (iframeWindow.THREE) {
+                            console.log("✅ Three.js library loaded (delayed)");
+                        } else {
+                            console.warn("⚠️ Three.js library not detected - external scripts may be blocked");
+                        }
+                    }, 1000);
+                }
+                
+                // Log any console errors from iframe for debugging
+                const originalConsoleError = iframeWindow.console.error;
+                iframeWindow.console.error = function(...args) {
+                    originalConsoleError.apply(iframeWindow.console, args);
+                    debugLog(`[IFRAME ERROR] ${args.join(' ')}`, 'error');
+                };
+                
+                // Log console.log from iframe too
+                const originalConsoleLog = iframeWindow.console.log;
+                iframeWindow.console.log = function(...args) {
+                    originalConsoleLog.apply(iframeWindow.console, args);
+                    // Only log important messages to avoid spam
+                    const message = args.join(' ');
+                    if (message.includes('Three.js') || message.includes('WebGL') || message.includes('Error')) {
+                        debugLog(`[IFRAME] ${message}`, 'info');
+                    }
+                };
+                
+                console.log("Preview updated successfully with Three.js support");
+            } catch (error) {
+                console.error("Error checking WebGL in iframe:", error);
+                debugLog(`Error in WebGL check: ${error.message}`, 'error');
+            }
+        };
+        
+        // checkWebGL will be called from the onload handler set above
+        // Also check after a delay as backup
+        setTimeout(checkWebGL, 500);
+        
+    } catch (error) {
+        console.error("Error writing to iframe:", error);
+        debugLog(`Error writing to iframe: ${error.message}`, 'error');
+        
+        // Fallback to srcdoc if document.write fails
+        console.warn("Falling back to srcdoc method");
+        preview.srcdoc = currentTab.content;
     }
 }
 
