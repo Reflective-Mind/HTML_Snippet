@@ -1496,13 +1496,8 @@ function updatePreview() {
                     return;
                 }
                 
-                // Ensure document is in a writable state
-                if (iframeDocument.readyState === 'complete' && iframeDocument.body && iframeDocument.body.children.length > 0) {
-                    // Document already has content, we need to clear it first
-                    iframeDocument.open();
-                }
-                
                 // Open the document for writing (this clears existing content)
+                // This must be called even if document seems ready, to ensure clean state
                 iframeDocument.open();
                 
                 // Write the HTML content directly
