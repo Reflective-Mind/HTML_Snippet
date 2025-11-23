@@ -1803,10 +1803,10 @@ function updatePreview() {
             }
         };
         
-        // If iframe is ready, write immediately, otherwise wait
-        if (preview.contentDocument && preview.contentDocument.readyState === 'complete') {
-            writeContent();
-            // Set up checkWebGL after content is written
+        // Wait for iframe to be ready before writing
+        waitForIframeReady();
+        
+        // Set up checkWebGL after content is written (will be called from writeContent)
             setTimeout(() => {
                 const iframeWindow = preview.contentWindow;
                 if (iframeWindow && iframeWindow.document) {
