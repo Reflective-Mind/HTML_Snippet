@@ -1800,23 +1800,6 @@ function updatePreview() {
         
         // Wait for iframe to be ready before writing
         waitForIframeReady();
-        
-        // Set up checkWebGL after content is written (will be called from writeContent)
-            setTimeout(() => {
-                const iframeWindow = preview.contentWindow;
-                if (iframeWindow && iframeWindow.document) {
-                    checkWebGL();
-                }
-            }, 100);
-        } else {
-            // Combine writeContent and checkWebGL in onload handler
-            preview.onload = function() {
-                writeContent();
-                // Wait for scripts to load before checking
-                setTimeout(checkWebGL, 300);
-            };
-            if (preview.contentDocument && preview.contentDocument.readyState === 'interactive') {
-                writeContent();
                 setTimeout(checkWebGL, 300);
             }
         }
