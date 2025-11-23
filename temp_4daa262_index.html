@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Layered Code Editor</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            margin: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(to bottom, #000428, #004e92);
+            color: #fff;
+            overflow: hidden;
+        }
+
+        #layerControls {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            background: #111;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+            z-index: 10;
+        }
+
+        /* Browser-like tabs */
+        #tabsContainer {
+            display: flex;
+            overflow-x: auto;
+            margin-right: auto; /* Push tabs to the left */
+            max-width: 70%;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255, 255, 255, 0.3) rgba(0, 0, 0, 0.2);
+        }
+
+        #tabsContainer::-webkit-scrollbar {
+            height: 5px;
+        }
+
+        #tabsContainer::-webkit-scrollbar-thumb {
+            background-color: rgba(255, 255, 255, 0.3);
+            border-radius: 5px;
+        }
+
+        #tabsContainer::-webkit-scrollbar-track {
+            background-color: rgba(0, 0, 0, 0.2);
+        }
+
+        .tab {
+            display: flex;
+            align-items: center;
+            padding: 8px 15px;
+            margin-right: 5px;
+            background: rgba(60, 60, 70, 0.5);
+            border-radius: 8px 8px 0 0;
+            cursor: pointer;
+            min-width: 100px;
+            max-width: 200px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            transition: background 0.2s ease;
+        }
+
+        .tab.active {
+            background: rgba(0, 120, 180, 0.7);
+        }
+
+        .tab:hover {
+            background: rgba(80, 80, 90, 0.8);
+        }
+
+        .tab.active:hover {
+            background: rgba(0, 140, 210, 0.8);
+        }
+
+        .tab-title {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .tab-close {
+            margin-left: 8px;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.2);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 12px;
+            transition: all 0.2s ease;
+        }
+
+        .tab-close:hover {
+            background: rgba(255, 50, 50, 0.8);
+        }
+        
+        /* Add styling for the rename button */
+        .tab-rename {
+            margin-left: 8px;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.2);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 12px;
+            transition: all 0.2s ease;
+        }
+
+        .tab-rename:hover {
+            background: rgba(50, 150, 255, 0.8);
+            cursor: pointer;
+        }
+
+        #layerControls button, #layerControls select {
+            margin-right: 10px;
+            padding: 8px 16px;
+            border: none;
+            background-color: transparent;
+            color: #fff;
+            font-size: 16px;
+            cursor: pointer;
+            overflow: hidden;
+            transition: transform 0.3s ease, filter 0.3s ease;
+        }
+
+        .import-export-button {
+            padding: 6px 10px;
+            margin-left: 5px;
+            margin-right: 10px;
+            font-size: 14px;
+            background-color: #555;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            transition: all 0.3s ease;
+        }
+
+        .import-export-button span {
+            font-size: 18px;
+            margin-right: 4px;
+        }
+
+        .import-export-button:hover {
+            background-color: #777;
+        }
+
+        #editCodeBtn {
+            background: rgba(0, 180, 180, 0.8);
+            color: white;
+            border-radius: 5px;
+            margin-left: 5px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+        
+        #editCodeBtn:hover {
+            background: rgba(0, 200, 200, 1);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+        }
+
+        #layerControls button:before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 50%;
+            width: 200%;
+            height: 100%;
+            background: linear-gradient(to right, #24402e, #072e0e);
+            mix-blend-mode: overlay;
+            z-index: -1;
+            transition: transform 0.3s ease;
+            transform: translateX(-50%) scaleX(0);
+        }
+
+        #layerControls button:hover:before {
+            transform: translateX(-50%) scaleX(1);
+        }
+
+        #layerControls button:hover {
+            filter: brightness(0.8) contrast(1.2) hue-rotate(90deg);
+        }
+
+        #layerControls button:active {
+            transform: scale(0.95);
+        }
+
+        #layerControls select {
+            color: black;
+            background: white;
+            font-size: 16px;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            padding: 8px 12px;
+            width: 100px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            outline: none;
+            margin: 5px;
+        }
+
+        #layerControls select:hover {
+            border-color: #999;
+        }
+
+        #layerControls select:focus {
+            border-color: #666;
+        }
+
+        #layerSelector {
+            width: 120px;
+            height: 50px;
+            font-size: 14px;
+        }
+        
+        #layerSelector option {
+            font-size: 14px;
+        }
+
+        #previewContainer {
+            flex: 1;
+            display: flex;
+            position: relative;
+            width: 100%;
+            height: calc(100vh - 70px);
+            overflow: hidden;
+        }
+
+        #preview {
+            flex: 1;
+            border: none;
+            width: 100%;
+            height: 100%;
+            background-color: #fff;
+        }
+
+        #editorPopup {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80%;
+            max-width: 800px;
+            max-height: 80vh;
+            background: rgba(0, 0, 0, 0.9);
+            border-radius: 20px;
+            box-shadow: 0 0 30px rgba(0, 255, 255, 0.7);
+            z-index: 1000;
+            display: none;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        #editorHeader {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 20px;
+            background: rgba(0, 0, 0, 0.7);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        #htmlEditor {
+            flex: 1;
+            border: none;
+            resize: none;
+            overflow: auto;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 20px;
+            color: #0f0;
+            font-family: 'Courier New', monospace;
+            font-size: 16px;
+            height: 100%;
+            min-height: 300px;
+        }
+
+        #editorActions {
+            display: flex;
+            justify-content: flex-end;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.7);
+        }
+
+        #errorOutput {
+            background: rgba(255, 255, 255, 0.1);
+            color: #ff4444;
+            padding: 10px 20px;
+            border-radius: 0;
+            margin: 0;
+            display: none;
+        }
+        
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 999;
+            display: none;
+        }
+
+        /* Import/Export modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            overflow: auto;
+        }
+
+        .modal-content {
+            background-color: rgba(30, 30, 30, 0.95);
+            margin: 10% auto;
+            padding: 20px;
+            border: 1px solid #444;
+            width: 80%;
+            max-width: 600px;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+        }
+
+        .modal h2 {
+            color: #fff;
+            margin-top: 0;
+        }
+
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .close:hover {
+            color: #fff;
+        }
+
+        #importExportTextarea {
+            width: 100%;
+            height: 200px;
+            background-color: rgba(0, 0, 0, 0.3);
+            color: #0f0;
+            border: 1px solid #555;
+            border-radius: 5px;
+            padding: 10px;
+            font-family: 'Courier New', monospace;
+            resize: vertical;
+            margin: 10px 0;
+        }
+
+        .modal-buttons {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .modal-buttons button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .confirm-button {
+            background-color: #4CAF50;
+            color: white;
+        }
+
+        .confirm-button:hover {
+            background-color: #45a049;
+        }
+
+        .cancel-button {
+            background-color: #f44336;
+            color: white;
+        }
+
+        .cancel-button:hover {
+            background-color: #d32f2f;
+        }
+
+        /* Save/Load server functionality */
+        #serverActionsMenu {
+            display: flex;
+            margin-left: 10px;
+        }
+
+        #serverActionsMenu button {
+            background: rgba(60, 60, 70, 0.5);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 6px 10px;
+            margin-right: 5px;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.2s;
+        }
+
+        #serverActionsMenu button:hover {
+            background: rgba(80, 80, 90, 0.8);
+            transform: translateY(-2px);
+        }
+
+        #saveModal, #loadModal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            overflow: auto;
+        }
+
+        .snippets-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .snippet-item {
+            background: rgba(40, 40, 50, 0.8);
+            border-radius: 5px;
+            padding: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .snippet-item:hover {
+            background: rgba(60, 60, 80, 0.8);
+            transform: translateY(-2px);
+        }
+
+        .snippet-item h3 {
+            margin: 0 0 5px 0;
+            color: #fff;
+            font-size: 16px;
+        }
+
+        .snippet-item-date {
+            font-size: 12px;
+            color: #aaa;
+            margin-top: 5px;
+        }
+        
+        /* Server actions styling */
+        #serverActionsMenu button {
+            background: rgba(60, 60, 70, 0.5);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 6px 10px;
+            margin-right: 5px;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.2s;
+        }
+        
+        #serverActionsMenu button:hover {
+            background: rgba(80, 80, 90, 0.8);
+            transform: translateY(-2px);
+        }
+        
+        .saved-files-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 10px;
+            margin-top: 15px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .saved-file-item {
+            background: rgba(40, 40, 50, 0.8);
+            border-radius: 5px;
+            padding: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .saved-file-item:hover {
+            background: rgba(60, 60, 80, 0.8);
+            transform: translateY(-2px);
+        }
+        
+        .saved-file-item h3 {
+            margin: 0 0 5px 0;
+            color: #fff;
+            font-size: 16px;
+        }
+        
+        .saved-file-date {
+            font-size: 12px;
+            color: #aaa;
+            margin-top: 5px;
+        }
+        
+        .refresh-button {
+            background-color: #4285f4;
+            color: white;
+        }
+        
+        .refresh-button:hover {
+            background-color: #366ac1;
+        }
+    </style>
+</head>
+<body>
+    <div id="layerControls">
+        <div id="tabsContainer">
+            <!-- Tabs will be dynamically added here -->
+        </div>
+
+        <button class="import-export-button" onclick="exportData()"><span>Ô¼ç</span> Export</button>
+        <button class="import-export-button" onclick="openImportModal()"><span>Ô¼å</span> Import</button>
+        <input type="text" id="layerNameInput" placeholder="Enter Layer Name" style="margin-left: 10px; width: 100px;">
+        <select id="layerSelector" onchange="switchLayer(this.value)" style="width: 100px; height: 20px; font-size: 14px;">
+            <option value="0">Layer 1</option>
+        </select>
+        <button onclick="addLayer()">Add Layer</button>
+        <button onclick="deleteLayer()">Delete Layer</button>
+        <button id="editCodeBtn" onclick="openEditor()">Edit Code</button>
+        <button id="fullscreenBtn" onclick="toggleFullscreen()" title="Toggle Fullscreen (F11)">ÔøÂ Fullscreen</button>
+        
+        <!-- Server actions menu -->
+        <div id="serverActionsMenu" style="display: flex; margin-left: 10px;">
+            <button onclick="openSaveToServerModal()">Save to Server</button>
+            <button onclick="openLoadFromServerModal()">Load from Server</button>
+        </div>
+    </div>
+    
+    <div id="previewContainer">
+        <iframe 
+            id="preview" 
+            allow="fullscreen; web-share; camera; microphone; geolocation; autoplay; encrypted-media; picture-in-picture"
+            allowfullscreen
+            sandbox="allow-scripts allow-same-origin allow-modals allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation allow-downloads"
+            style="width: 100%; height: 100%; border: none; background: #fff;">
+        </iframe>
+    </div>
+
+    <!-- Add debug panel -->
+    <div id="debugPanel" style="position: fixed; bottom: 0; right: 0; background: rgba(0,0,0,0.7); color: #0f0; max-height: 200px; overflow-y: auto; padding: 10px; width: 400px; font-family: monospace; font-size: 12px; z-index: 9999; display: none;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+            <strong>Debug Console</strong>
+            <div>
+                <button onclick="document.getElementById('debugContent').innerHTML = ''" style="padding: 2px 5px; font-size: 10px; background: #333; color: white; border: none;">Clear</button>
+                <button onclick="document.getElementById('debugPanel').style.display = 'none'; localStorage.setItem('debugPanelHidden', 'true');" style="padding: 2px 5px; font-size: 10px; background: #333; color: white; border: none;">Close</button>
+            </div>
+        </div>
+        <div id="debugContent"></div>
+    </div>
+
+    <div class="overlay" id="editorOverlay" onclick="closeEditor()"></div>
+    
+    <div id="editorPopup">
+        <div id="editorHeader">
+            <h3 style="margin: 0;">HTML Editor</h3>
+            <button onclick="closeEditor()">Ô£ò</button>
+        </div>
+        <div id="errorOutput"></div>
+        <textarea id="htmlEditor" placeholder="Enter your HTML code here..."></textarea>
+        <div id="editorActions">
+            <button onclick="copyToClipboard()">Copy</button>
+            <button onclick="pasteFromClipboard()">Paste</button>
+            <button onclick="applyCode()">Apply Code</button>
+        </div>
+    </div>
+
+    <!-- Import/Export Modal -->
+    <div id="importExportModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeImportExportModal()">&times;</span>
+            <h2 id="modalTitle">Import Data</h2>
+            <p id="modalDescription">Paste the exported data below to import your layers and tabs.</p>
+            <textarea id="importExportTextarea" placeholder="Paste your exported data here..."></textarea>
+            <div class="modal-buttons">
+                <button class="cancel-button" onclick="closeImportExportModal()">Cancel</button>
+                <button id="confirmButton" class="confirm-button" onclick="importData()">Import</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Save to Server Modal -->
+    <div id="saveToServerModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeSaveToServerModal()">&times;</span>
+            <h2>Save to Server</h2>
+            <p>Save your current layers to the server for later use.</p>
+            <div>
+                <label for="saveName">Name</label>
+                <input type="text" id="saveName" placeholder="Enter a name for your save file" style="width: 100%; padding: 8px; margin: 10px 0; background: rgba(0,0,0,0.3); color: white; border: 1px solid #555; border-radius: 4px;">
+            </div>
+            <div class="modal-buttons">
+                <button class="cancel-button" onclick="closeSaveToServerModal()">Cancel</button>
+                <button class="confirm-button" onclick="saveLayersToServer()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Load from Server Modal -->
+    <div id="loadFromServerModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeLoadFromServerModal()">&times;</span>
+            <h2>Load from Server</h2>
+            <p>Select a saved file to load from the server.</p>
+            <div class="saved-files-list" id="savedFilesList">
+                <!-- Saved files will be listed here -->
+                <p>Loading saved files...</p>
+            </div>
+            <div class="modal-buttons">
+                <button class="cancel-button" onclick="closeLoadFromServerModal()">Cancel</button>
+                <button class="refresh-button" onclick="loadSavedFilesList()">Refresh List</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/app.js"></script>
+</body>
+</html> 

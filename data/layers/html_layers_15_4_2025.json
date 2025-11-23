@@ -1,0 +1,28 @@
+{
+  "layers": [
+    {
+      "name": "Layer 1",
+      "tabs": [
+        {
+          "id": "tab1",
+          "name": "Untitled",
+          "content": "<!DOCTYPE html>\n<html>\n<head>\n    <title>HTML Content</title>\n</head>\n<body>\n    <h1>Welcome to HTML Viewer</h1>\n    <p>Edit the code to see your changes in real-time!</p>\n</body>\n</html>"
+        }
+      ],
+      "activeTabId": "tab1"
+    },
+    {
+      "name": "Layer 2",
+      "tabs": [
+        {
+          "id": "layer1_tab1",
+          "name": "Untitled",
+          "content": "<!DOCTYPE html>\n<html>\n<head>\n    <title>HTML Content</title>\n</head>\n<body>\n    <h1>New Layer</h1>\n    <p>Start creating content in this layer!</p>\n</body>\n</html>"
+        }
+      ],
+      "activeTabId": "layer1_tab1"
+    }
+  ],
+  "currentLayerIndex": 1,
+  "savedAt": "2025-04-15T01:55:20.931Z"
+}
