@@ -956,10 +956,18 @@ function setupAutoSave() {
     // Also set up interval saving as a backup
     setInterval(saveToLocalStorage, 3000);
     
-    // Listen for editor changes
+    // Listen for editor changes - save content as user types
     const htmlEditor = document.getElementById('htmlEditor');
     if (htmlEditor) {
-        htmlEditor.addEventListener('input', () => saveToLocalStorage());
+        htmlEditor.addEventListener('input', () => {
+            // Save editor content to current tab immediately
+            const currentTab = getCurrentTab();
+            if (currentTab && htmlEditor.value !== undefined) {
+                currentTab.content = htmlEditor.value;
+                // Then save to localStorage
+                saveToLocalStorage();
+            }
+        });
     }
     
     console.log("Enhanced auto-save functionality enabled with server backup");
@@ -1374,6 +1382,14 @@ function openEditor() {
 }
 
 function closeEditor() {
+    // Save content before closing
+    const htmlEditor = document.getElementById('htmlEditor');
+    const currentTab = getCurrentTab();
+    if (htmlEditor && currentTab && htmlEditor.value !== undefined) {
+        currentTab.content = htmlEditor.value;
+        saveToLocalStorage();
+    }
+    
     document.getElementById('editorPopup').style.display = 'none';
     document.getElementById('editorOverlay').style.display = 'none';
 }
@@ -1534,15 +1550,24 @@ function updatePreview() {
                         
                         const handleScriptsAndDOM = () => {
                             // Always dispatch DOMContentLoaded to ensure apps that listen for it work
-                            if (!iframeDocument._domContentLoadedFired) {
+                            // Dispatch it multiple times to catch any listeners that might have missed it
+                            const dispatchDOMContentLoaded = () => {
                                 const domContentLoadedEvent = new Event('DOMContentLoaded', { 
                                     bubbles: true, 
                                     cancelable: true 
                                 });
                                 iframeDocument.dispatchEvent(domContentLoadedEvent);
-                                iframeDocument._domContentLoadedFired = true;
                                 console.log("✅ Dispatched DOMContentLoaded event in iframe");
-                            }
+                            };
+                            
+                            // Dispatch immediately
+                            dispatchDOMContentLoaded();
+                            
+                            // Also dispatch after a short delay to catch late listeners
+                            setTimeout(dispatchDOMContentLoaded, 100);
+                            setTimeout(dispatchDOMContentLoaded, 500);
+                            
+                            iframeDocument._domContentLoadedFired = true;
                             
                             // Wait a moment for document.write scripts to execute naturally
                             // document.write() already executes scripts, so we just need to:
@@ -1623,7 +1648,7 @@ function updatePreview() {
                                     const loadEvent = new Event('load', { bubbles: true });
                                     iframeWindow.dispatchEvent(loadEvent);
                                 }
-                            }, 300);
+                            }, 500);
                         };
                         
                         // Start the process
