@@ -1463,6 +1463,82 @@ function updatePreview() {
                 // Close the document to trigger rendering
                 iframeDocument.close();
                 
+                // CRITICAL: Ensure scripts execute properly
+                // When using document.write(), scripts should execute automatically,
+                // but we need to ensure DOMContentLoaded fires and all scripts run
+                const ensureScriptsExecute = () => {
+                    try {
+                        // Manually trigger DOMContentLoaded if document is ready
+                        if (iframeDocument.readyState === 'complete' || iframeDocument.readyState === 'interactive') {
+                            // Create and dispatch DOMContentLoaded event
+                            const domContentLoadedEvent = new Event('DOMContentLoaded', { 
+                                bubbles: true, 
+                                cancelable: true 
+                            });
+                            iframeDocument.dispatchEvent(domContentLoadedEvent);
+                            console.log("✅ Dispatched DOMContentLoaded event in iframe");
+                        }
+                        
+                        // Also ensure all scripts execute (in case they didn't)
+                        setTimeout(() => {
+                            const scripts = iframeDocument.querySelectorAll('script:not([data-executed])');
+                            if (scripts.length > 0) {
+                                console.log(`⚠️ Found ${scripts.length} scripts, ensuring execution`);
+                                scripts.forEach(script => {
+                                    try {
+                                        // Create new script element to force execution
+                                        const newScript = iframeDocument.createElement('script');
+                                        
+                                        // Copy all attributes (src, type, async, defer, etc.)
+                                        Array.from(script.attributes).forEach(attr => {
+                                            newScript.setAttribute(attr.name, attr.value);
+                                        });
+                                        
+                                        // Copy content
+                                        if (script.textContent) {
+                                            newScript.textContent = script.textContent;
+                                        }
+                                        if (script.innerHTML && !script.textContent) {
+                                            newScript.innerHTML = script.innerHTML;
+                                        }
+                                        
+                                        // Mark as executed
+                                        newScript.setAttribute('data-executed', 'true');
+                                        
+                                        // Replace old script (this forces execution)
+                                        if (script.parentNode) {
+                                            script.parentNode.replaceChild(newScript, script);
+                                        }
+                                        
+                                        console.log("✅ Executed script in iframe");
+                                    } catch (scriptError) {
+                                        console.warn("⚠️ Could not execute script:", scriptError);
+                                    }
+                                });
+                            }
+                            
+                            // Also trigger window.onload if it exists
+                            if (iframeWindow && typeof iframeWindow.onload === 'function') {
+                                try {
+                                    iframeWindow.onload();
+                                } catch (e) {
+                                    // Ignore errors
+                                }
+                            }
+                        }, 50);
+                    } catch (execError) {
+                        console.error("Error ensuring script execution:", execError);
+                    }
+                };
+                
+                // If document is still loading, wait for it
+                if (iframeDocument.readyState === 'loading') {
+                    iframeDocument.addEventListener('DOMContentLoaded', ensureScriptsExecute);
+                } else {
+                    // Document already loaded, execute immediately
+                    ensureScriptsExecute();
+                }
+                
                 // Return true to indicate success
                 return true;
             } catch (writeError) {
