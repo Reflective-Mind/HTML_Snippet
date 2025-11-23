@@ -1140,6 +1140,15 @@ function initApp() {
     // Update the UI
     updateLayerSelector();
     renderTabs();
+    
+    // Sync editor with current tab content on page load
+    const htmlEditor = document.getElementById('htmlEditor');
+    const currentTab = getCurrentTab();
+    if (htmlEditor && currentTab) {
+        htmlEditor.value = currentTab.content;
+    }
+    
+    // Update the preview after editor is synced
     updatePreview();
     
     // Setup automatic saving
@@ -1224,17 +1233,50 @@ function switchLayer(layerIndex) {
         return;
     }
     
+    // CRITICAL: Save current editor content before switching layers
+    const htmlEditor = document.getElementById('htmlEditor');
+    if (htmlEditor && htmlEditor.value !== undefined) {
+        const currentTab = getCurrentTab();
+        if (currentTab) {
+            currentTab.content = htmlEditor.value;
+            saveToLocalStorage();
+        }
+    }
+    
     // Log the layer switch but don't force the debug panel to show
     console.log(`Switching to layer ${layerIndex}: ${layers[layerIndex].name}`);
     
     // Update the current layer
     currentLayerIndex = parseInt(layerIndex);
     
+    // Ensure the layer has tabs and an active tab
+    const newLayer = layers[currentLayerIndex];
+    if (!newLayer.tabs || newLayer.tabs.length === 0) {
+        console.warn("New layer has no tabs, adding default tab");
+        newLayer.tabs = [{
+            id: `layer${currentLayerIndex}_tab${Date.now()}`,
+            name: "Untitled",
+            content: "<!DOCTYPE html>\n<html>\n<head>\n    <title>HTML Content</title>\n</head>\n<body>\n    <h1>Welcome to HTML Viewer</h1>\n    <p>Edit the code to see your changes in real-time!</p>\n</body>\n</html>"
+        }];
+        newLayer.activeTabId = newLayer.tabs[0].id;
+    }
+    
+    // Ensure activeTabId is valid
+    if (!newLayer.activeTabId || !newLayer.tabs.find(tab => tab.id === newLayer.activeTabId)) {
+        newLayer.activeTabId = newLayer.tabs[0].id;
+    }
+    
     // Update the layer name input placeholder to show current name
     const layerNameInput = document.getElementById('layerNameInput');
     if (layerNameInput) {
         layerNameInput.placeholder = `Rename: ${layers[currentLayerIndex].name}`;
         layerNameInput.value = '';  // Clear the input field
+    }
+    
+    // Update editor content with the new layer's active tab
+    const newActiveTab = getCurrentTab();
+    if (htmlEditor && newActiveTab) {
+        htmlEditor.value = newActiveTab.content;
     }
     
     // Update tabs display
@@ -1703,14 +1745,15 @@ function updatePreview() {
         };
         
         // Wait for iframe to load after reset
-        preview.onload = () => {
+        let onloadHandler = () => {
             preview.onload = null;
             writeContent();
         };
+        preview.onload = onloadHandler;
         
         // Backup: if onload doesn't fire, try after a delay
         setTimeout(() => {
-            if (preview.onload) {
+            if (preview.onload === onloadHandler) {
                 preview.onload = null;
                 writeContent();
             }
@@ -1719,6 +1762,17 @@ function updatePreview() {
                 isUpdatingPreview = false;
             }, 1000);
         }, 500);
+        
+        // Also check if iframe is already loaded
+        if (preview.contentDocument && preview.contentDocument.readyState !== 'loading') {
+            // Iframe might already be ready, try writing immediately
+            setTimeout(() => {
+                if (preview.onload === onloadHandler) {
+                    preview.onload = null;
+                    writeContent();
+                }
+            }, 50);
+        }
         
     } catch (error) {
         console.error("Error writing to iframe:", error);
@@ -1929,6 +1983,15 @@ function closeImportExportModal() {
 // Local Storage Functions - Enhanced
 function saveToLocalStorage() {
     try {
+        // CRITICAL: Always sync editor content to current tab before saving
+        const htmlEditor = document.getElementById('htmlEditor');
+        if (htmlEditor && htmlEditor.value !== undefined) {
+            const currentTab = getCurrentTab();
+            if (currentTab) {
+                currentTab.content = htmlEditor.value;
+            }
+        }
+        
         const dataToSave = {
             layers: layers,
             currentLayerIndex: currentLayerIndex
