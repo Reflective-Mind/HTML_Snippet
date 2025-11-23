@@ -1444,60 +1444,18 @@ function updatePreview() {
         return;
     }
     
-    // Log the preview update but don't force the debug panel to show
     console.log(`Updating preview for tab: ${currentTab.name}`);
     
-    // Get the iframe element
     const preview = document.getElementById('preview');
     if (!preview) {
         console.error("Preview iframe not found");
         return;
     }
     
-    // CRITICAL FIX: Use document.write() instead of srcdoc for Three.js support
-    // srcdoc creates an "about:srcdoc" origin which blocks external CDN scripts
-    // Writing directly to the iframe document allows external scripts to load properly
+    // Use document.write() for Three.js support - it allows external CDN scripts to load
     try {
-        // ALWAYS reset iframe to clean state when switching tabs/layers
-        // This ensures document.write() works properly every time
+        // Reset iframe to clean state
         preview.src = 'about:blank';
-        
-        // Clear any previous state flags
-        if (preview.contentWindow) {
-            delete preview.contentWindow._domContentLoadedFired;
-        }
-        
-        // CRITICAL: Wait for iframe to load before writing content
-        // Setting src to 'about:blank' triggers a load event that we must wait for
-        const waitForIframeReady = () => {
-            // Check if iframe is ready
-            try {
-                const iframeWindow = preview.contentWindow;
-                const iframeDocument = preview.contentDocument || (iframeWindow ? iframeWindow.document : null);
-                
-                if (iframeDocument && iframeDocument.readyState !== 'loading') {
-                    // Iframe is ready, write content
-                    writeContent();
-                } else {
-                    // Iframe not ready yet, wait for load event
-                    preview.onload = () => {
-                        preview.onload = null; // Clear handler to avoid conflicts
-                        writeContent();
-                    };
-                    
-                    // Backup timeout in case onload doesn't fire
-                    setTimeout(() => {
-                        if (preview.onload) {
-                            preview.onload = null;
-                            writeContent();
-                        }
-                    }, 1000);
-                }
-            } catch (e) {
-                // Iframe might not be accessible yet, wait a bit
-                setTimeout(waitForIframeReady, 50);
-            }
-        };
         
         // Wait for iframe to be ready, then write content
         const writeContent = () => {
@@ -1505,248 +1463,47 @@ function updatePreview() {
                 const iframeWindow = preview.contentWindow;
                 const iframeDocument = preview.contentDocument || (iframeWindow ? iframeWindow.document : null);
                 
-                // Ensure we can access the document
                 if (!iframeDocument) {
-                    console.error("Cannot access iframe document, retrying...");
                     setTimeout(writeContent, 100);
                     return;
                 }
                 
-                // Open the document for writing (this clears existing content)
-                // This must be called even if document seems ready, to ensure clean state
+                // Open document for writing
                 iframeDocument.open();
                 
-                // Write the HTML content directly
-                // document.write() automatically executes scripts as they're written
+                // Write HTML content - document.write() automatically executes scripts
                 iframeDocument.write(currentTab.content);
                 
-                // Close the document to trigger rendering and script execution
+                // Close document to trigger rendering
                 iframeDocument.close();
                 
-                // CRITICAL: Enhanced script execution for complex apps and Three.js
-                // document.write() executes scripts automatically, but we need to:
-                // 1. Ensure DOMContentLoaded fires properly
-                // 2. Handle external scripts that might not have loaded yet
-                // 3. Wait for document to be fully ready before checking
-                const ensureScriptsExecute = () => {
-                    try {
-                        // Reset DOMContentLoaded flag for this new document
-                        iframeDocument._domContentLoadedFired = false;
-                        
-                        // Wait for document to be ready before doing anything
-                        const waitForDocumentReady = () => {
-                            if (iframeDocument.readyState === 'loading') {
-                                // Document still loading, wait for it
-                                iframeDocument.addEventListener('DOMContentLoaded', () => {
-                                    handleScriptsAndDOM();
-                                }, { once: true });
-                                // Backup timeout
-                                setTimeout(handleScriptsAndDOM, 2000);
-                            } else {
-                                // Document already ready, proceed immediately
-                                handleScriptsAndDOM();
-                            }
-                        };
-                        
-                        const handleScriptsAndDOM = () => {
-                            // Always dispatch DOMContentLoaded to ensure apps that listen for it work
-                            // Dispatch it multiple times to catch any listeners that might have missed it
-                            const dispatchDOMContentLoaded = () => {
-                                const domContentLoadedEvent = new Event('DOMContentLoaded', { 
-                                    bubbles: true, 
-                                    cancelable: true 
-                                });
-                                iframeDocument.dispatchEvent(domContentLoadedEvent);
-                                console.log("✅ Dispatched DOMContentLoaded event in iframe");
-                            };
-                            
-                            // Dispatch immediately
-                            dispatchDOMContentLoaded();
-                            
-                            // Also dispatch after a short delay to catch late listeners
-                            setTimeout(dispatchDOMContentLoaded, 100);
-                            setTimeout(dispatchDOMContentLoaded, 500);
-                            
-                            iframeDocument._domContentLoadedFired = true;
-                            
-                            // Wait a moment for document.write scripts to execute naturally
-                            // document.write() already executes scripts, so we just need to:
-                            // 1. Wait for external scripts to load
-                            // 2. Ensure DOM is fully ready
-                            setTimeout(() => {
-                                // Find scripts that need attention
-                                const allScripts = Array.from(iframeDocument.querySelectorAll('script'));
-                                const externalScripts = allScripts.filter(s => s.src && s.src.startsWith('http'));
-                                
-                                console.log(`📜 Found ${externalScripts.length} external scripts for tab: ${currentTab.name}`);
-                                
-                                // Handle external scripts that might not have loaded yet
-                                // document.write() already executed inline scripts, so we don't need to re-execute them
-                                if (externalScripts.length > 0) {
-                                    let loadedCount = 0;
-                                    const totalExternal = externalScripts.length;
-                                    
-                                    externalScripts.forEach((script) => {
-                                        // Check if script already loaded by checking if the library is available
-                                        const isThreeJs = script.src && script.src.includes('three');
-                                        if (isThreeJs && iframeWindow.THREE) {
-                                            // THREE.js already loaded
-                                            loadedCount++;
-                                            console.log(`✅ THREE.js already available`);
-                                            if (loadedCount === totalExternal) {
-                                                checkLibraries();
-                                            }
-                                            return;
-                                        }
-                                        
-                                        // Check if script is already loaded (has onload fired or library exists)
-                                        if (script.src && script.src.startsWith('http')) {
-                                            // Wait a bit to see if script loads naturally
-                                            const checkScript = setInterval(() => {
-                                                if (isThreeJs && iframeWindow.THREE) {
-                                                    clearInterval(checkScript);
-                                                    loadedCount++;
-                                                    console.log(`✅ External script loaded: ${script.src}`);
-                                                    if (loadedCount === totalExternal) {
-                                                        checkLibraries();
-                                                    }
-                                                }
-                                            }, 100);
-                                            
-                                            // Timeout after 3 seconds - assume it loaded or failed
-                                            setTimeout(() => {
-                                                clearInterval(checkScript);
-                                                loadedCount++;
-                                                if (loadedCount === totalExternal) {
-                                                    checkLibraries();
-                                                }
-                                            }, 3000);
-                                        } else {
-                                            // Local script, assume loaded
-                                            loadedCount++;
-                                            if (loadedCount === totalExternal) {
-                                                checkLibraries();
-                                            }
-                                        }
-                                    });
-                                } else {
-                                    // No external scripts, just check libraries
-                                    checkLibraries();
-                                }
-                                
-                                // Trigger window.onload if document is complete
-                                if (iframeDocument.readyState === 'complete') {
-                                    if (iframeWindow && typeof iframeWindow.onload === 'function') {
-                                        try {
-                                            iframeWindow.onload();
-                                        } catch (e) {
-                                            // Ignore errors
-                                        }
-                                    }
-                                    
-                                    // Also dispatch load event
-                                    const loadEvent = new Event('load', { bubbles: true });
-                                    iframeWindow.dispatchEvent(loadEvent);
-                                }
-                            }, 500);
-                        };
-                        
-                        // Start the process
-                        waitForDocumentReady();
-                        
-                        // Function to check for libraries like Three.js
-                        const checkLibraries = () => {
-                            setTimeout(() => {
-                                // Check Three.js
-                                if (iframeWindow.THREE) {
-                                    console.log("✅ Three.js loaded successfully!");
-                                    console.log("Three.js version:", iframeWindow.THREE.REVISION || "unknown");
-                                    
-                                    // Test WebGL context creation
-                                    try {
-                                        const testCanvas = iframeDocument.createElement('canvas');
-                                        const testGl = testCanvas.getContext('webgl') || testCanvas.getContext('experimental-webgl');
-                                        if (testGl) {
-                                            console.log("✅ WebGL context can be created - Three.js should work!");
-                                        } else {
-                                            console.warn("⚠️ WebGL context cannot be created - Three.js may not work");
-                                        }
-                                    } catch (e) {
-                                        console.warn("⚠️ Error testing WebGL:", e);
-                                    }
-                                } else {
-                                    // Check if Three.js script exists but hasn't loaded yet
-                                    const threeScript = iframeDocument.querySelector('script[src*="three"]');
-                                    if (threeScript) {
-                                        console.log("📜 Three.js script tag found:", threeScript.src);
-                                        console.log("⏳ Waiting for Three.js to load...");
-                                        // Wait longer for Three.js
-                                        setTimeout(() => {
-                                            if (iframeWindow.THREE) {
-                                                console.log("✅ Three.js loaded (delayed)");
-                                            } else {
-                                                console.error("❌ Three.js failed to load from:", threeScript.src);
-                                                console.error("   Check browser console for CORS or network errors");
-                                            }
-                                        }, 3000);
-                                    }
-                                }
-                                
-                                // Capture console errors from iframe
-                                if (iframeWindow.console) {
-                                    const originalError = iframeWindow.console.error;
-                                    const originalLog = iframeWindow.console.log;
-                                    
-                                    iframeWindow.console.error = function(...args) {
-                                        originalError.apply(iframeWindow.console, args);
-                                        const errorMsg = args.join(' ');
-                                        if (errorMsg.includes('WebGL') || errorMsg.includes('Three') || errorMsg.includes('CORS') || errorMsg.includes('Error')) {
-                                            debugLog(`[IFRAME ERROR] ${errorMsg}`, 'error');
-                                        }
-                                    };
-                                    
-                                    iframeWindow.console.log = function(...args) {
-                                        originalLog.apply(iframeWindow.console, args);
-                                        // Optionally log important messages
-                                        const msg = args.join(' ');
-                                        if (msg.includes('Three.js') || msg.includes('WebGL') || msg.includes('loaded')) {
-                                            debugLog(`[IFRAME] ${msg}`, 'info');
-                                        }
-                                    };
-                                }
-                            }, 500);
-                        };
-                    } catch (execError) {
-                        console.error("Error ensuring script execution:", execError);
-                    }
-                };
-                
-                // Wait for iframe to be ready
-                // document.write() scripts execute automatically, but we need to ensure DOM is ready
-                if (iframeDocument.readyState === 'loading') {
-                    iframeDocument.addEventListener('DOMContentLoaded', ensureScriptsExecute, { once: true });
-                    // Backup timeout
-                    setTimeout(ensureScriptsExecute, 2000);
-                } else {
-                    // Document already ready, execute immediately
-                    ensureScriptsExecute();
+                // Ensure DOMContentLoaded fires for apps that listen to it
+                if (iframeDocument.readyState === 'complete' || iframeDocument.readyState === 'interactive') {
+                    const domContentLoadedEvent = new Event('DOMContentLoaded', { bubbles: true, cancelable: true });
+                    iframeDocument.dispatchEvent(domContentLoadedEvent);
                 }
                 
-                // Return true to indicate success
-                return true;
+                // Also dispatch after a short delay for late listeners
+                setTimeout(() => {
+                    if (iframeDocument.readyState === 'complete') {
+                        const loadEvent = new Event('load', { bubbles: true });
+                        iframeWindow.dispatchEvent(loadEvent);
+                    }
+                }, 100);
+                
+                // Check for Three.js after scripts have time to load
+                setTimeout(() => {
+                    checkWebGL();
+                }, 1000);
+                
             } catch (writeError) {
                 console.error("Error writing to iframe:", writeError);
-                // Fallback to srcdoc if document.write fails
-                console.warn("Falling back to srcdoc method");
+                // Fallback to srcdoc
                 preview.srcdoc = currentTab.content;
-                return false;
             }
         };
         
-        // Wait for iframe to be ready before writing
-        waitForIframeReady();
-        
-        // Wait for the iframe to fully load before checking WebGL
+        // Function to check WebGL and Three.js support
         const checkWebGL = () => {
             try {
                 const iframeWindow = preview.contentWindow;
@@ -1825,9 +1582,19 @@ function updatePreview() {
             }
         };
         
-        // checkWebGL will be called from the onload handler set above
-        // Also check after a delay as backup
-        setTimeout(checkWebGL, 500);
+        // Wait for iframe to load after reset
+        preview.onload = () => {
+            preview.onload = null;
+            writeContent();
+        };
+        
+        // Backup: if onload doesn't fire, try after a delay
+        setTimeout(() => {
+            if (preview.onload) {
+                preview.onload = null;
+                writeContent();
+            }
+        }, 500);
         
     } catch (error) {
         console.error("Error writing to iframe:", error);
