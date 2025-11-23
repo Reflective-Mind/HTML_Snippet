@@ -1458,117 +1458,141 @@ function updatePreview() {
                 iframeDocument.open();
                 
                 // Write the HTML content directly
+                // document.write() automatically executes scripts as they're written
                 iframeDocument.write(currentTab.content);
                 
-                // Close the document to trigger rendering
+                // Close the document to trigger rendering and script execution
                 iframeDocument.close();
                 
-                // CRITICAL: Ensure scripts execute properly - Enhanced for Three.js and AI-generated code
-                // Handles external CDN scripts, script dependencies, and proper execution order
+                // CRITICAL: Enhanced script execution for complex apps and Three.js
+                // document.write() executes scripts automatically, but we need to:
+                // 1. Ensure DOMContentLoaded fires properly
+                // 2. Handle external scripts that might not have loaded yet
+                // 3. Re-execute any scripts that failed to run
                 const ensureScriptsExecute = () => {
                     try {
-                        // Manually trigger DOMContentLoaded if document is ready
+                        // First, ensure DOMContentLoaded fires if it hasn't already
                         if (iframeDocument.readyState === 'complete' || iframeDocument.readyState === 'interactive') {
-                            // Create and dispatch DOMContentLoaded event
-                            const domContentLoadedEvent = new Event('DOMContentLoaded', { 
-                                bubbles: true, 
-                                cancelable: true 
-                            });
-                            iframeDocument.dispatchEvent(domContentLoadedEvent);
-                            console.log("✅ Dispatched DOMContentLoaded event in iframe");
+                            // Check if DOMContentLoaded already fired
+                            if (!iframeDocument._domContentLoadedFired) {
+                                const domContentLoadedEvent = new Event('DOMContentLoaded', { 
+                                    bubbles: true, 
+                                    cancelable: true 
+                                });
+                                iframeDocument.dispatchEvent(domContentLoadedEvent);
+                                iframeDocument._domContentLoadedFired = true;
+                                console.log("✅ Dispatched DOMContentLoaded event in iframe");
+                            }
                         }
                         
-                        // Separate scripts into external (with src) and inline scripts
-                        const allScripts = Array.from(iframeDocument.querySelectorAll('script:not([data-executed])'));
-                        const externalScripts = allScripts.filter(s => s.src);
-                        const inlineScripts = allScripts.filter(s => !s.src);
-                        
-                        console.log(`📜 Found ${externalScripts.length} external scripts and ${inlineScripts.length} inline scripts`);
-                        
-                        // Function to load external scripts sequentially
-                        const loadExternalScripts = (scripts, index = 0) => {
-                            if (index >= scripts.length) {
-                                // All external scripts loaded, now execute inline scripts
-                                executeInlineScripts();
-                                return;
-                            }
+                        // Wait a moment for document.write scripts to execute
+                        setTimeout(() => {
+                            // Find scripts that might not have executed
+                            const allScripts = Array.from(iframeDocument.querySelectorAll('script'));
+                            const externalScripts = allScripts.filter(s => s.src && !s.hasAttribute('data-executed'));
+                            const inlineScripts = allScripts.filter(s => !s.src && !s.hasAttribute('data-executed'));
                             
-                            const script = scripts[index];
-                            const newScript = iframeDocument.createElement('script');
+                            console.log(`📜 Checking ${externalScripts.length} external scripts and ${inlineScripts.length} inline scripts`);
                             
-                            // Copy all attributes
-                            Array.from(script.attributes).forEach(attr => {
-                                if (attr.name !== 'data-executed') {
-                                    newScript.setAttribute(attr.name, attr.value);
-                                }
-                            });
-                            
-                            // Mark as executed
-                            newScript.setAttribute('data-executed', 'true');
-                            
-                            // Handle script load
-                            newScript.onload = () => {
-                                console.log(`✅ External script loaded: ${script.src || 'inline'}`);
-                                // Load next script
-                                loadExternalScripts(scripts, index + 1);
-                            };
-                            
-                            newScript.onerror = () => {
-                                console.warn(`⚠️ Failed to load external script: ${script.src}`);
-                                // Continue with next script even if this one fails
-                                loadExternalScripts(scripts, index + 1);
-                            };
-                            
-                            // Replace old script
-                            if (script.parentNode) {
-                                script.parentNode.replaceChild(newScript, script);
-                            } else {
-                                // If no parent, append to head or body
-                                (iframeDocument.head || iframeDocument.body).appendChild(newScript);
-                            }
-                        };
-                        
-                        // Function to execute inline scripts
-                        const executeInlineScripts = () => {
-                            setTimeout(() => {
-                                inlineScripts.forEach(script => {
-                                    try {
-                                        // Create new script element to force execution
+                            // Handle external scripts that might not have loaded
+                            if (externalScripts.length > 0) {
+                                let loadedCount = 0;
+                                externalScripts.forEach((script, index) => {
+                                    // Check if script already loaded
+                                    if (script.src && script.src.startsWith('http')) {
+                                        // Create a new script element to ensure it loads
                                         const newScript = iframeDocument.createElement('script');
+                                        Array.from(script.attributes).forEach(attr => {
+                                            if (attr.name !== 'data-executed') {
+                                                newScript.setAttribute(attr.name, attr.value);
+                                            }
+                                        });
+                                        newScript.setAttribute('data-executed', 'true');
                                         
-                                        // Copy all attributes (type, async, defer, etc.)
+                                        newScript.onload = () => {
+                                            loadedCount++;
+                                            console.log(`✅ External script loaded: ${script.src}`);
+                                            if (loadedCount === externalScripts.length) {
+                                                // All external scripts loaded, check for Three.js
+                                                checkLibraries();
+                                            }
+                                        };
+                                        
+                                        newScript.onerror = () => {
+                                            loadedCount++;
+                                            console.warn(`⚠️ Failed to load external script: ${script.src}`);
+                                            if (loadedCount === externalScripts.length) {
+                                                checkLibraries();
+                                            }
+                                        };
+                                        
+                                        // Only replace if script hasn't loaded
+                                        if (!script.onload && !script.onerror) {
+                                            if (script.parentNode) {
+                                                script.parentNode.replaceChild(newScript, script);
+                                            } else {
+                                                (iframeDocument.head || iframeDocument.body).appendChild(newScript);
+                                            }
+                                        } else {
+                                            // Script already loading, just mark it
+                                            script.setAttribute('data-executed', 'true');
+                                            loadedCount++;
+                                            if (loadedCount === externalScripts.length) {
+                                                checkLibraries();
+                                            }
+                                        }
+                                    } else {
+                                        // Local script, mark as executed
+                                        script.setAttribute('data-executed', 'true');
+                                        loadedCount++;
+                                        if (loadedCount === externalScripts.length) {
+                                            checkLibraries();
+                                        }
+                                    }
+                                });
+                            } else {
+                                // No external scripts, just check libraries
+                                checkLibraries();
+                            }
+                            
+                            // Re-execute inline scripts that might not have run
+                            // Only if they don't have data-executed attribute
+                            inlineScripts.forEach(script => {
+                                try {
+                                    // Check if script has content and hasn't been executed
+                                    if ((script.textContent || script.innerHTML) && !script.hasAttribute('data-executed')) {
+                                        // Create new script to force execution
+                                        const newScript = iframeDocument.createElement('script');
                                         Array.from(script.attributes).forEach(attr => {
                                             if (attr.name !== 'data-executed') {
                                                 newScript.setAttribute(attr.name, attr.value);
                                             }
                                         });
                                         
-                                        // Copy content
                                         if (script.textContent) {
                                             newScript.textContent = script.textContent;
-                                        }
-                                        if (script.innerHTML && !script.textContent) {
+                                        } else if (script.innerHTML) {
                                             newScript.innerHTML = script.innerHTML;
                                         }
                                         
-                                        // Mark as executed
                                         newScript.setAttribute('data-executed', 'true');
                                         
-                                        // Replace old script (this forces execution)
+                                        // Replace old script
                                         if (script.parentNode) {
                                             script.parentNode.replaceChild(newScript, script);
                                         } else {
-                                            // Append to body if no parent
                                             iframeDocument.body.appendChild(newScript);
                                         }
                                         
-                                        console.log("✅ Executed inline script in iframe");
-                                    } catch (scriptError) {
-                                        console.warn("⚠️ Could not execute inline script:", scriptError);
+                                        console.log("✅ Re-executed inline script");
                                     }
-                                });
-                                
-                                // Also trigger window.onload if it exists
+                                } catch (scriptError) {
+                                    console.warn("⚠️ Could not re-execute inline script:", scriptError);
+                                }
+                            });
+                            
+                            // Trigger window.onload if document is complete
+                            if (iframeDocument.readyState === 'complete') {
                                 if (iframeWindow && typeof iframeWindow.onload === 'function') {
                                     try {
                                         iframeWindow.onload();
@@ -1577,86 +1601,89 @@ function updatePreview() {
                                     }
                                 }
                                 
-                                // Check for Three.js and other libraries after a delay
-                                setTimeout(() => {
-                                    // Check Three.js
-                                    if (iframeWindow.THREE) {
-                                        console.log("✅ Three.js loaded successfully!");
-                                        console.log("Three.js version:", iframeWindow.THREE.REVISION || "unknown");
-                                        
-                                        // Test WebGL context creation
-                                        try {
-                                            const testCanvas = iframeDocument.createElement('canvas');
-                                            const testGl = testCanvas.getContext('webgl') || testCanvas.getContext('experimental-webgl');
-                                            if (testGl) {
-                                                console.log("✅ WebGL context can be created - Three.js should work!");
-                                            } else {
-                                                console.warn("⚠️ WebGL context cannot be created - Three.js may not work");
-                                            }
-                                        } catch (e) {
-                                            console.warn("⚠️ Error testing WebGL:", e);
-                                        }
-                                    } else {
-                                        console.warn("⚠️ Three.js not detected - check if CDN script loaded correctly");
-                                        // Check if script tag exists
-                                        const threeScript = iframeDocument.querySelector('script[src*="three"]');
-                                        if (threeScript) {
-                                            console.log("📜 Three.js script tag found:", threeScript.src);
-                                            console.log("⏳ Waiting longer for Three.js to load...");
-                                            // Wait a bit more
-                                            setTimeout(() => {
-                                                if (iframeWindow.THREE) {
-                                                    console.log("✅ Three.js loaded (delayed)");
-                                                } else {
-                                                    console.error("❌ Three.js failed to load from:", threeScript.src);
-                                                    console.error("   This might be a CORS or network issue");
-                                                }
-                                            }, 2000);
-                                        }
-                                    }
+                                // Also dispatch load event
+                                const loadEvent = new Event('load', { bubbles: true });
+                                iframeWindow.dispatchEvent(loadEvent);
+                            }
+                        }, 100);
+                        
+                        // Function to check for libraries like Three.js
+                        const checkLibraries = () => {
+                            setTimeout(() => {
+                                // Check Three.js
+                                if (iframeWindow.THREE) {
+                                    console.log("✅ Three.js loaded successfully!");
+                                    console.log("Three.js version:", iframeWindow.THREE.REVISION || "unknown");
                                     
-                                    // Log any console errors from iframe
+                                    // Test WebGL context creation
+                                    try {
+                                        const testCanvas = iframeDocument.createElement('canvas');
+                                        const testGl = testCanvas.getContext('webgl') || testCanvas.getContext('experimental-webgl');
+                                        if (testGl) {
+                                            console.log("✅ WebGL context can be created - Three.js should work!");
+                                        } else {
+                                            console.warn("⚠️ WebGL context cannot be created - Three.js may not work");
+                                        }
+                                    } catch (e) {
+                                        console.warn("⚠️ Error testing WebGL:", e);
+                                    }
+                                } else {
+                                    // Check if Three.js script exists but hasn't loaded yet
+                                    const threeScript = iframeDocument.querySelector('script[src*="three"]');
+                                    if (threeScript) {
+                                        console.log("📜 Three.js script tag found:", threeScript.src);
+                                        console.log("⏳ Waiting for Three.js to load...");
+                                        // Wait longer for Three.js
+                                        setTimeout(() => {
+                                            if (iframeWindow.THREE) {
+                                                console.log("✅ Three.js loaded (delayed)");
+                                            } else {
+                                                console.error("❌ Three.js failed to load from:", threeScript.src);
+                                                console.error("   Check browser console for CORS or network errors");
+                                            }
+                                        }, 3000);
+                                    }
+                                }
+                                
+                                // Capture console errors from iframe
+                                if (iframeWindow.console) {
                                     const originalError = iframeWindow.console.error;
+                                    const originalLog = iframeWindow.console.log;
+                                    
                                     iframeWindow.console.error = function(...args) {
                                         originalError.apply(iframeWindow.console, args);
                                         const errorMsg = args.join(' ');
-                                        if (errorMsg.includes('WebGL') || errorMsg.includes('Three') || errorMsg.includes('CORS')) {
+                                        if (errorMsg.includes('WebGL') || errorMsg.includes('Three') || errorMsg.includes('CORS') || errorMsg.includes('Error')) {
                                             debugLog(`[IFRAME ERROR] ${errorMsg}`, 'error');
                                         }
                                     };
-                                }, 500);
-                            }, 100);
+                                    
+                                    iframeWindow.console.log = function(...args) {
+                                        originalLog.apply(iframeWindow.console, args);
+                                        // Optionally log important messages
+                                        const msg = args.join(' ');
+                                        if (msg.includes('Three.js') || msg.includes('WebGL') || msg.includes('loaded')) {
+                                            debugLog(`[IFRAME] ${msg}`, 'info');
+                                        }
+                                    };
+                                }
+                            }, 500);
                         };
-                        
-                        // Start loading external scripts first, then inline scripts
-                        if (externalScripts.length > 0) {
-                            loadExternalScripts(externalScripts);
-                        } else {
-                            // No external scripts, just execute inline scripts
-                            executeInlineScripts();
-                        }
                     } catch (execError) {
                         console.error("Error ensuring script execution:", execError);
                     }
                 };
                 
-                // Wait for iframe to be fully ready before executing scripts
-                // This ensures the document is in the right state
-                const waitForReady = () => {
-                    if (iframeDocument.readyState === 'loading') {
-                        iframeDocument.addEventListener('DOMContentLoaded', ensureScriptsExecute, { once: true });
-                        // Also set a timeout as backup
-                        setTimeout(ensureScriptsExecute, 1000);
-                    } else if (iframeDocument.readyState === 'interactive' || iframeDocument.readyState === 'complete') {
-                        // Document ready, execute immediately but with a small delay to ensure DOM is ready
-                        setTimeout(ensureScriptsExecute, 50);
-                    } else {
-                        // Unknown state, try anyway
-                        setTimeout(ensureScriptsExecute, 100);
-                    }
-                };
-                
-                waitForReady();
+                // Wait for iframe to be ready
+                // document.write() scripts execute automatically, but we need to ensure DOM is ready
+                if (iframeDocument.readyState === 'loading') {
+                    iframeDocument.addEventListener('DOMContentLoaded', ensureScriptsExecute, { once: true });
+                    // Backup timeout
+                    setTimeout(ensureScriptsExecute, 2000);
+                } else {
+                    // Document already ready, execute immediately
+                    ensureScriptsExecute();
+                }
                 
                 // Return true to indicate success
                 return true;
