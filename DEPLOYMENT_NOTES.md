@@ -1,37 +1,45 @@
-# Deployment Process for mbti-render.onrender.com
+# 🚀 DEPLOYMENT PROCESS FOR mbti-render.onrender.com
 
-## Quick Deployment Steps
+## ⚡ QUICK DEPLOYMENT COMMANDS
 
-After making any changes to the HTML viewer:
+**ALWAYS RUN THESE AFTER MAKING CHANGES:**
 
-1. **Commit changes to html-viewer-new branch:**
-   ```bash
-   git add .
-   git commit -m "Description of changes"
-   git push origin html-viewer-new
-   ```
+```bash
+# 1. Commit to development branch
+git add .
+git commit -m "Description of changes"
+git push origin html-viewer-new
 
-2. **Merge to master and push for Render deployment:**
-   ```bash
-   git checkout master
-   git merge html-viewer-new
-   git push origin master --force-with-lease
-   git checkout html-viewer-new
-   ```
+# 2. Deploy to production (master branch for Render)
+git checkout master
+git merge html-viewer-new
+git push origin master --force-with-lease
+git checkout html-viewer-new
+```
 
-3. **Render will auto-deploy** (if autoDeploy: true is set in render.yaml)
+## 📋 DEPLOYMENT CHECKLIST
 
-## Important Notes
+- [ ] Changes committed to `html-viewer-new`
+- [ ] Changes pushed to `html-viewer-new`
+- [ ] Merged to `master` branch
+- [ ] Pushed to `master` branch
+- [ ] Render auto-deploys (takes 2-5 minutes)
 
-- Render deploys from the `master` branch
-- Always push to both `html-viewer-new` (for development) and `master` (for production)
-- The service name is `mbti-render` (configured in render.yaml)
-- URL: https://mbti-render.onrender.com/
+## 🔗 IMPORTANT INFO
 
-## Files That Affect Deployment
+- **Service Name:** `mbti-render` (in render.yaml)
+- **Production URL:** https://mbti-render.onrender.com/
+- **Render Branch:** `master` (auto-deploys when pushed)
+- **Development Branch:** `html-viewer-new`
+
+## 📁 KEY FILES
 
 - `public/index.html` - Main HTML viewer interface
 - `public/app.js` - Viewer functionality and iframe rendering
 - `server.js` - Express server
 - `render.yaml` - Render deployment configuration
+
+## ⚠️ REMEMBER
+
+**ALWAYS push to master after making changes!** This ensures Render deploys the latest version.
 
