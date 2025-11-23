@@ -1497,13 +1497,19 @@ function updatePreview() {
                         }
                         
                         // Wait a moment for document.write scripts to execute
+                        // Clear any previous execution markers first
                         setTimeout(() => {
-                            // Find scripts that might not have executed
+                            // Remove all data-executed attributes to allow fresh execution
+                            iframeDocument.querySelectorAll('script[data-executed]').forEach(script => {
+                                script.removeAttribute('data-executed');
+                            });
+                            
+                            // Find scripts that need to execute
                             const allScripts = Array.from(iframeDocument.querySelectorAll('script'));
                             const externalScripts = allScripts.filter(s => s.src && !s.hasAttribute('data-executed'));
                             const inlineScripts = allScripts.filter(s => !s.src && !s.hasAttribute('data-executed'));
                             
-                            console.log(`📜 Found ${externalScripts.length} external scripts and ${inlineScripts.length} inline scripts`);
+                            console.log(`📜 Found ${externalScripts.length} external scripts and ${inlineScripts.length} inline scripts for tab: ${currentTab.name}`);
                             
                             // Function to execute inline scripts after dependencies are loaded
                             const executeInlineScriptsAfterDeps = () => {
