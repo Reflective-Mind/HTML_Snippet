@@ -1451,17 +1451,55 @@ function updatePreview() {
             delete preview.contentWindow._domContentLoadedFired;
         }
         
+        // CRITICAL: Wait for iframe to load before writing content
+        // Setting src to 'about:blank' triggers a load event that we must wait for
+        const waitForIframeReady = () => {
+            // Check if iframe is ready
+            try {
+                const iframeWindow = preview.contentWindow;
+                const iframeDocument = preview.contentDocument || (iframeWindow ? iframeWindow.document : null);
+                
+                if (iframeDocument && iframeDocument.readyState !== 'loading') {
+                    // Iframe is ready, write content
+                    writeContent();
+                } else {
+                    // Iframe not ready yet, wait for load event
+                    preview.onload = () => {
+                        preview.onload = null; // Clear handler to avoid conflicts
+                        writeContent();
+                    };
+                    
+                    // Backup timeout in case onload doesn't fire
+                    setTimeout(() => {
+                        if (preview.onload) {
+                            preview.onload = null;
+                            writeContent();
+                        }
+                    }, 1000);
+                }
+            } catch (e) {
+                // Iframe might not be accessible yet, wait a bit
+                setTimeout(waitForIframeReady, 50);
+            }
+        };
+        
         // Wait for iframe to be ready, then write content
         const writeContent = () => {
             try {
                 const iframeWindow = preview.contentWindow;
-                const iframeDocument = preview.contentDocument || iframeWindow.document;
+                const iframeDocument = preview.contentDocument || (iframeWindow ? iframeWindow.document : null);
                 
                 // Ensure we can access the document
                 if (!iframeDocument) {
-                    console.error("Cannot access iframe document");
+                    console.error("Cannot access iframe document, retrying...");
                     setTimeout(writeContent, 100);
                     return;
+                }
+                
+                // Ensure document is in a writable state
+                if (iframeDocument.readyState === 'complete' && iframeDocument.body && iframeDocument.body.children.length > 0) {
+                    // Document already has content, we need to clear it first
+                    iframeDocument.open();
                 }
                 
                 // Open the document for writing (this clears existing content)
