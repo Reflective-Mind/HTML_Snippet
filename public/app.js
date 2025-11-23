@@ -1800,9 +1800,6 @@ function updatePreview() {
         
         // Wait for iframe to be ready before writing
         waitForIframeReady();
-                setTimeout(checkWebGL, 300);
-            }
-        }
         
         // Wait for the iframe to fully load before checking WebGL
         const checkWebGL = () => {
