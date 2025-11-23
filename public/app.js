@@ -956,19 +956,59 @@ function setupAutoSave() {
     // Also set up interval saving as a backup
     setInterval(saveToLocalStorage, 3000);
     
-    // Listen for editor changes - save content as user types
+    // Listen for editor changes - save content as user types with debounce
     const htmlEditor = document.getElementById('htmlEditor');
     if (htmlEditor) {
+        let saveTimeout;
         htmlEditor.addEventListener('input', () => {
             // Save editor content to current tab immediately
             const currentTab = getCurrentTab();
             if (currentTab && htmlEditor.value !== undefined) {
                 currentTab.content = htmlEditor.value;
-                // Then save to localStorage
+                
+                // Debounce the localStorage save to avoid too many writes
+                clearTimeout(saveTimeout);
+                saveTimeout = setTimeout(() => {
+                    saveToLocalStorage();
+                }, 500);
+            }
+        });
+        
+        // Also save on blur (when editor loses focus)
+        htmlEditor.addEventListener('blur', () => {
+            const currentTab = getCurrentTab();
+            if (currentTab && htmlEditor.value !== undefined) {
+                currentTab.content = htmlEditor.value;
                 saveToLocalStorage();
             }
         });
     }
+    
+    // Save before page unload
+    window.addEventListener('beforeunload', () => {
+        const htmlEditor = document.getElementById('htmlEditor');
+        if (htmlEditor && htmlEditor.value !== undefined) {
+            const currentTab = getCurrentTab();
+            if (currentTab) {
+                currentTab.content = htmlEditor.value;
+                saveToLocalStorage();
+            }
+        }
+    });
+    
+    // Also save on visibility change (when user switches tabs in browser)
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            const htmlEditor = document.getElementById('htmlEditor');
+            if (htmlEditor && htmlEditor.value !== undefined) {
+                const currentTab = getCurrentTab();
+                if (currentTab) {
+                    currentTab.content = htmlEditor.value;
+                    saveToLocalStorage();
+                }
+            }
+        }
+    });
     
     console.log("Enhanced auto-save functionality enabled with server backup");
 }
@@ -1232,9 +1272,18 @@ function deleteLayer() {
 // Tab Management Functions
 function renderTabs() {
     const tabsContainer = document.getElementById('tabsContainer');
-    tabsContainer.innerHTML = '';
+    if (!tabsContainer) {
+        console.error("Tabs container not found");
+        return;
+    }
     
     const currentLayer = layers[currentLayerIndex];
+    if (!currentLayer || !currentLayer.tabs || currentLayer.tabs.length === 0) {
+        console.error("No tabs found in current layer");
+        return;
+    }
+    
+    tabsContainer.innerHTML = '';
     
     currentLayer.tabs.forEach(tab => {
         const tabElement = document.createElement('div');
@@ -1326,17 +1375,46 @@ function addTab() {
 function closeTab(tabId) {
     const currentLayer = layers[currentLayerIndex];
     
+    if (!currentLayer || !currentLayer.tabs) {
+        console.error("No current layer or tabs found");
+        return;
+    }
+    
+    // Validate tab exists
+    const tabIndex = currentLayer.tabs.findIndex(tab => tab.id === tabId);
+    if (tabIndex === -1) {
+        console.error("Tab not found:", tabId);
+        return;
+    }
+    
     if (currentLayer.tabs.length <= 1) {
         alert("You cannot close the only tab.");
         return;
     }
     
-    const tabIndex = currentLayer.tabs.findIndex(tab => tab.id === tabId);
+    // Save current editor content before closing
+    const htmlEditor = document.getElementById('htmlEditor');
+    if (htmlEditor && htmlEditor.value !== undefined) {
+        const currentTab = getCurrentTab();
+        if (currentTab && currentTab.id !== tabId) {
+            currentTab.content = htmlEditor.value;
+        }
+    }
+    
+    // Remove the tab
     currentLayer.tabs.splice(tabIndex, 1);
     
     // If the active tab was closed, activate another tab
     if (currentLayer.activeTabId === tabId) {
-        currentLayer.activeTabId = currentLayer.tabs[0].id;
+        // Make sure we have a valid tab to switch to
+        if (currentLayer.tabs.length > 0) {
+            const newActiveTab = currentLayer.tabs[Math.min(tabIndex, currentLayer.tabs.length - 1)];
+            currentLayer.activeTabId = newActiveTab.id;
+            // Update editor if open
+            if (htmlEditor) {
+                htmlEditor.value = newActiveTab.content;
+            }
+        }
     }
     
     renderTabs();
@@ -1345,8 +1423,34 @@ function closeTab(tabId) {
 }
 
 function switchTab(tabId) {
+    // Save current tab content before switching
+    const htmlEditor = document.getElementById('htmlEditor');
+    if (htmlEditor && htmlEditor.value !== undefined) {
+        const currentTab = getCurrentTab();
+        if (currentTab) {
+            currentTab.content = htmlEditor.value;
+            saveToLocalStorage();
+        }
+    }
+    
     const currentLayer = layers[currentLayerIndex];
+    if (!currentLayer) {
+        console.error("No current layer found");
+        return;
+    }
+    
+    const targetTab = currentLayer.tabs.find(tab => tab.id === tabId);
+    if (!targetTab) {
+        console.error("Invalid tab ID:", tabId, "Available tabs:", currentLayer.tabs.map(t => t.id));
+        return;
+    }
+    
     currentLayer.activeTabId = tabId;
+    
+    // Update editor content if editor is open
+    if (htmlEditor) {
+        htmlEditor.value = targetTab.content;
+    }
     
     renderTabs();
     updatePreview();
@@ -1437,6 +1541,10 @@ function applyCode() {
     }
 }
 
+// Debounce preview updates to prevent too many rapid updates
+let previewUpdateTimeout;
+let isUpdatingPreview = false;
+
 function updatePreview() {
     const currentTab = getCurrentTab();
     if (!currentTab) {
@@ -1444,11 +1552,21 @@ function updatePreview() {
         return;
     }
     
+    // Debounce rapid updates
+    if (isUpdatingPreview) {
+        clearTimeout(previewUpdateTimeout);
+        previewUpdateTimeout = setTimeout(() => updatePreview(), 100);
+        return;
+    }
+    
+    isUpdatingPreview = true;
+    
     console.log(`Updating preview for tab: ${currentTab.name}`);
     
     const preview = document.getElementById('preview');
     if (!preview) {
         console.error("Preview iframe not found");
+        isUpdatingPreview = false;
         return;
     }
     
@@ -1576,9 +1694,11 @@ function updatePreview() {
                 };
                 
                 console.log("Preview updated successfully with Three.js support");
+                isUpdatingPreview = false;
             } catch (error) {
                 console.error("Error checking WebGL in iframe:", error);
                 debugLog(`Error in WebGL check: ${error.message}`, 'error');
+                isUpdatingPreview = false;
             }
         };
         
@@ -1594,11 +1714,16 @@ function updatePreview() {
                 preview.onload = null;
                 writeContent();
             }
+            // Reset flag after timeout
+            setTimeout(() => {
+                isUpdatingPreview = false;
+            }, 1000);
         }, 500);
         
     } catch (error) {
         console.error("Error writing to iframe:", error);
         debugLog(`Error writing to iframe: ${error.message}`, 'error');
+        isUpdatingPreview = false;
         
         // Fallback to srcdoc if document.write fails
         console.warn("Falling back to srcdoc method");
