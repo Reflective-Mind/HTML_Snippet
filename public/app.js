@@ -1442,10 +1442,13 @@ function updatePreview() {
     // srcdoc creates an "about:srcdoc" origin which blocks external CDN scripts
     // Writing directly to the iframe document allows external scripts to load properly
     try {
-        // First, ensure iframe is in a clean state by setting src to about:blank
-        // This ensures we can write to it properly
-        if (!preview.contentDocument || preview.contentDocument.readyState === 'loading') {
-            preview.src = 'about:blank';
+        // ALWAYS reset iframe to clean state when switching tabs/layers
+        // This ensures document.write() works properly every time
+        preview.src = 'about:blank';
+        
+        // Clear any previous state flags
+        if (preview.contentWindow) {
+            delete preview.contentWindow._domContentLoadedFired;
         }
         
         // Wait for iframe to be ready, then write content
@@ -1453,6 +1456,13 @@ function updatePreview() {
             try {
                 const iframeWindow = preview.contentWindow;
                 const iframeDocument = preview.contentDocument || iframeWindow.document;
+                
+                // Ensure we can access the document
+                if (!iframeDocument) {
+                    console.error("Cannot access iframe document");
+                    setTimeout(writeContent, 100);
+                    return;
+                }
                 
                 // Open the document for writing (this clears existing content)
                 iframeDocument.open();
@@ -1471,18 +1481,19 @@ function updatePreview() {
                 // 3. Re-execute any scripts that failed to run
                 const ensureScriptsExecute = () => {
                     try {
+                        // Reset DOMContentLoaded flag for this new document
+                        iframeDocument._domContentLoadedFired = false;
+                        
                         // First, ensure DOMContentLoaded fires if it hasn't already
                         if (iframeDocument.readyState === 'complete' || iframeDocument.readyState === 'interactive') {
-                            // Check if DOMContentLoaded already fired
-                            if (!iframeDocument._domContentLoadedFired) {
-                                const domContentLoadedEvent = new Event('DOMContentLoaded', { 
-                                    bubbles: true, 
-                                    cancelable: true 
-                                });
-                                iframeDocument.dispatchEvent(domContentLoadedEvent);
-                                iframeDocument._domContentLoadedFired = true;
-                                console.log("✅ Dispatched DOMContentLoaded event in iframe");
-                            }
+                            // Always dispatch DOMContentLoaded for new content
+                            const domContentLoadedEvent = new Event('DOMContentLoaded', { 
+                                bubbles: true, 
+                                cancelable: true 
+                            });
+                            iframeDocument.dispatchEvent(domContentLoadedEvent);
+                            iframeDocument._domContentLoadedFired = true;
+                            console.log("✅ Dispatched DOMContentLoaded event in iframe");
                         }
                         
                         // Wait a moment for document.write scripts to execute
