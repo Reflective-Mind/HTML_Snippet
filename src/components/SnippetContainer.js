@@ -1,5 +1,68 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 
+// Add CSS animation for snippet placement
+if (typeof document !== 'undefined' && !document.getElementById('snippet-container-styles')) {
+    const style = document.createElement('style');
+    style.id = 'snippet-container-styles';
+    style.textContent = `
+        @keyframes snippetPlaceAnimation {
+            0% {
+                transform: scale(0.8) rotate(-2deg);
+                opacity: 0;
+            }
+            50% {
+                transform: scale(1.1) rotate(1deg);
+            }
+            100% {
+                transform: scale(1) rotate(0deg);
+                opacity: 1;
+            }
+        }
+        
+        .snippet-container.just-placed {
+            animation: snippetPlaceAnimation 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        
+        .snippet-container:hover:not(.dragging) {
+            transform: scale(1.02) !important;
+            transition: all 0.2s ease !important;
+        }
+    `;
+    document.head.appendChild(style);
+}
+
+// Color palette for snippet containers
+const COLOR_PALETTE = [
+    { bg: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', border: '#667eea' },
+    { bg: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)', border: '#f5576c' },
+    { bg: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)', border: '#4facfe' },
+    { bg: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)', border: '#43e97b' },
+    { bg: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)', border: '#fa709a' },
+    { bg: 'linear-gradient(135deg, #30cfd0 0%, #330867 100%)', border: '#30cfd0' },
+    { bg: 'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)', border: '#a8edea' },
+    { bg: 'linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%)', border: '#ff9a9e' },
+    { bg: 'linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)', border: '#fcb69f' },
+    { bg: 'linear-gradient(135deg, #ff8a80 0%, #ff5722 100%)', border: '#ff5722' },
+    { bg: 'linear-gradient(135deg, #89f7fe 0%, #66a6ff 100%)', border: '#66a6ff' },
+    { bg: 'linear-gradient(135deg, #fbc2eb 0%, #a6c1ee 100%)', border: '#a6c1ee' }
+];
+
+// Generate or get color for a snippet
+const getSnippetColor = (snippetId) => {
+    // If snippet already has a color, use it
+    if (snippetId && typeof snippetId === 'string') {
+        // Use a hash of the snippet ID to consistently pick a color
+        let hash = 0;
+        for (let i = 0; i < snippetId.length; i++) {
+            hash = snippetId.charCodeAt(i) + ((hash << 5) - hash);
+        }
+        const index = Math.abs(hash) % COLOR_PALETTE.length;
+        return COLOR_PALETTE[index];
+    }
+    // Otherwise pick a random color
+    return COLOR_PALETTE[Math.floor(Math.random() * COLOR_PALETTE.length)];
+};
+
 const SnippetContainer = ({ 
     snippet, 
     showPreview, 
@@ -13,6 +76,8 @@ const SnippetContainer = ({
     const [position, setPosition] = useState(snippet.position || { x: 0, y: 0 });
     const [size, setSize] = useState(snippet.size || { width: 300, height: 200 });
     const [contentRendered, setContentRendered] = useState(false);
+    const [snippetColor, setSnippetColor] = useState(() => getSnippetColor(snippet.id));
+    const [justPlaced, setJustPlaced] = useState(true);
     const containerRef = useRef(null);
     const contentRef = useRef(null);
     const scriptsRef = useRef([]);
@@ -25,6 +90,9 @@ const SnippetContainer = ({
         if (!snippet.position) {
             console.log('No position found for snippet, using default');
             setPosition({ x: 0, y: 0 });
+            // If this is a new snippet being placed, trigger animation
+            setJustPlaced(true);
+            setTimeout(() => setJustPlaced(false), 600);
         } else {
             setPosition(snippet.position);
         }
@@ -35,6 +103,9 @@ const SnippetContainer = ({
         } else {
             setSize(snippet.size);
         }
+        
+        // Set color based on snippet ID for consistency
+        setSnippetColor(getSnippetColor(snippet.id));
     }, [snippet.id]); // Only update when snippet ID changes to avoid loops
 
     // Initialize script content in the snippet after render
@@ -400,22 +471,27 @@ const SnippetContainer = ({
     return (
         <div
             ref={containerRef}
-            className={`snippet-container ${isDragging ? 'dragging' : ''} ${showPreview ? 'preview-mode' : ''}`}
+            className={`snippet-container ${isDragging ? 'dragging' : ''} ${showPreview ? 'preview-mode' : ''} ${justPlaced ? 'just-placed' : ''}`}
             style={{
                 position: 'absolute',
                 left: position.x,
                 top: position.y,
                 width: size.width,
                 height: size.height,
-                border: showPreview ? 'none' : '1px solid #ccc',
-                background: 'white',
+                border: showPreview ? 'none' : `3px solid ${snippetColor.border}`,
+                background: showPreview ? 'white' : snippetColor.bg,
                 padding: '10px',
-                boxShadow: isDragging ? '0 5px 15px rgba(0,0,0,0.3)' : '0 2px 5px rgba(0,0,0,0.1)',
-                borderRadius: '4px',
+                boxShadow: isDragging 
+                    ? `0 10px 30px rgba(0,0,0,0.4), 0 0 20px ${snippetColor.border}40` 
+                    : justPlaced
+                        ? `0 8px 25px rgba(0,0,0,0.3), 0 0 15px ${snippetColor.border}60`
+                        : `0 4px 12px rgba(0,0,0,0.15), 0 0 8px ${snippetColor.border}30`,
+                borderRadius: '12px',
                 cursor: (!showPreview && onUpdate) ? (isDragging ? 'grabbing' : 'grab') : 'default',
-                transition: isDragging ? 'none' : 'box-shadow 0.3s ease',
+                transition: isDragging ? 'none' : 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                 userSelect: 'none',
-                zIndex: isDragging ? 100 : 10 // Increase z-index when dragging
+                zIndex: isDragging ? 100 : (justPlaced ? 50 : 10),
+                transform: justPlaced ? 'scale(1)' : 'scale(1)'
             }}
             onMouseDown={(!showPreview && onUpdate) ? (e) => handleMouseDown(e, 'drag') : undefined}
             onTouchStart={(!showPreview && onUpdate) ? (e) => handleTouchStart(e, 'drag') : undefined}
