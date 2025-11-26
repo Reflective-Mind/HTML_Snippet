@@ -52,14 +52,18 @@ npm start
 
 ## Deployment
 
+### IMPORTANT: Deployment Branch
+**All deployments must go to the `html-viewer-new` branch.**
+
 ### Deploying to Render
 
-1. Create a new web service on Render
-2. Connect your repository
-3. Use the following settings:
-   - Build Command: `npm install`
-   - Start Command: `node server.js`
-   - Auto-Deploy: Yes
+1. Push your changes to the `html-viewer-new` branch:
+   ```bash
+   git checkout html-viewer-new
+   git merge master
+   git push origin html-viewer-new
+   ```
+2. The Render service is configured to auto-deploy from this branch.
 
 ### Deploying to Vercel
 

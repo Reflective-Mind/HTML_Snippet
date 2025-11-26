@@ -7,7 +7,7 @@
     "start": "node server.js",
     "dev": "nodemon server.js",
     "build": "npm install",
-    "deploy:render": "git push render main",
+    "deploy:render": "git push origin html-viewer-new",
     "deploy:vercel": "vercel --prod"
   },
   "dependencies": {
